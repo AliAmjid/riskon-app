@@ -45,7 +45,7 @@ export function NewRunForm({ onCreated }: Props) {
       <h2>New optimization run</h2>
       <p className="muted">
         Triggers the riskon-agent workspace via Cursor SDK. The agent follows AGENTS.md and
-        writes deliverables under <code>runs/</code> and <code>artifacts/</code>.
+        writes deliverables under <code>runs/</code>.
       </p>
 
       <label>

@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Agent, CursorAgentError, type SDKAgent, type SDKMessage } from '@cursor/sdk';
+import {
+  Agent,
+  CursorAgentError,
+  type SDKAgent,
+  type SDKMessage,
+} from '@cursor/sdk';
 import type { AgentRuntime } from '@riskon/shared';
 
 export interface TriggerRunOptions {
@@ -24,7 +29,12 @@ export interface TriggerRunResult {
 export class CursorAgentService {
   constructor(private readonly config: ConfigService) {}
 
-  buildPrompt(options: Pick<TriggerRunOptions, 'businessQuestion' | 'dataSource' | 'template'>): string {
+  buildPrompt(
+    options: Pick<
+      TriggerRunOptions,
+      'businessQuestion' | 'dataSource' | 'template'
+    >,
+  ): string {
     const dataLine = options.dataSource
       ? `Data source: ${options.dataSource}`
       : 'No data source was provided; ask the user to clarify or use a bundled dataset from data/.';
@@ -45,7 +55,6 @@ export class CursorAgentService {
       '- runs/<timestamp>-<slug>/model.py',
       '- runs/<timestamp>-<slug>/report.md',
       '',
-      'Put any additional deliverable files under artifacts/ at the repository root.',
       'Run riskon doctor first if this is a cold start.',
     ].join('\n');
   }
@@ -92,7 +101,10 @@ export class CursorAgentService {
         cursorRunId,
         status: result.status,
         result: result.result ?? null,
-        errorMessage: result.status === 'error' ? 'Agent run failed — inspect events and transcript.' : null,
+        errorMessage:
+          result.status === 'error'
+            ? 'Agent run failed — inspect events and transcript.'
+            : null,
       };
     } catch (error) {
       if (error instanceof CursorAgentError) {
@@ -110,28 +122,5 @@ export class CursorAgentService {
         await agent[Symbol.asyncDispose]();
       }
     }
-  }
-
-  async listArtifacts(cursorAgentId: string): Promise<Array<{ path: string; sizeBytes: number }>> {
-    const apiKey = this.config.getOrThrow<string>('CURSOR_API_KEY');
-    const runtime = cursorAgentId.startsWith('bc-') ? 'cloud' : 'local';
-
-    if (runtime === 'local') {
-      return [];
-    }
-
-    await using agent = await Agent.resume(cursorAgentId, { apiKey });
-    const artifacts = await agent.listArtifacts();
-    return artifacts.map((artifact) => ({
-      path: artifact.path,
-      sizeBytes: artifact.sizeBytes,
-    }));
-  }
-
-  async downloadArtifact(cursorAgentId: string, path: string): Promise<Buffer> {
-    const apiKey = this.config.getOrThrow<string>('CURSOR_API_KEY');
-    await using agent = await Agent.resume(cursorAgentId, { apiKey });
-    const buffer = await agent.downloadArtifact(path);
-    return Buffer.from(buffer);
   }
 }

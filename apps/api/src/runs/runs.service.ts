@@ -3,15 +3,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type {
   AgentRunSummary,
-  ArtifactSummary,
   CreateRunRequest,
   RunEventPayload,
 } from '@riskon/shared';
 import { AgentRun } from '../database/entities/agent-run.entity.js';
 import { RunEvent } from '../database/entities/run-event.entity.js';
-import { Artifact } from '../database/entities/artifact.entity.js';
 import { CursorAgentService } from '../cursor/cursor-agent.service.js';
-import { ArtifactStorageService } from '../artifacts/artifact-storage.service.js';
 import { EventsGateway } from '../events/events.gateway.js';
 
 @Injectable()
@@ -21,10 +18,7 @@ export class RunsService {
     private readonly runsRepo: Repository<AgentRun>,
     @InjectRepository(RunEvent)
     private readonly eventsRepo: Repository<RunEvent>,
-    @InjectRepository(Artifact)
-    private readonly artifactsRepo: Repository<Artifact>,
     private readonly cursorAgent: CursorAgentService,
-    private readonly artifactStorage: ArtifactStorageService,
     private readonly eventsGateway: EventsGateway,
   ) {}
 
@@ -70,16 +64,10 @@ export class RunsService {
     }));
   }
 
-  async listArtifacts(id: string): Promise<ArtifactSummary[]> {
-    await this.findOne(id);
-    const artifacts = await this.artifactsRepo.find({
-      where: { runId: id },
-      order: { createdAt: 'ASC' },
-    });
-    return artifacts.map((artifact) => this.toArtifactSummary(artifact));
-  }
-
-  private async executeRun(runId: string, repositoryUrl: string | null): Promise<void> {
+  private async executeRun(
+    runId: string,
+    repositoryUrl: string | null,
+  ): Promise<void> {
     const run = await this.runsRepo.findOne({ where: { id: runId } });
     if (!run) {
       return;
@@ -121,31 +109,11 @@ export class RunsService {
       completedAt: new Date(),
     });
 
-    if (outcome.cursorAgentId && outcome.cursorAgentId !== 'unknown') {
-      await this.persistArtifacts(runId, outcome.cursorAgentId);
-    }
-
     this.eventsGateway.emitRunUpdated(runId, {
       status: outcome.status,
       result: outcome.result,
       errorMessage: outcome.errorMessage,
     });
-  }
-
-  private async persistArtifacts(runId: string, cursorAgentId: string): Promise<void> {
-    const artifacts = await this.cursorAgent.listArtifacts(cursorAgentId);
-    for (const item of artifacts) {
-      const body = await this.cursorAgent.downloadArtifact(cursorAgentId, item.path);
-      const storageKey = await this.artifactStorage.upload(runId, item.path, body);
-      await this.artifactsRepo.save(
-        this.artifactsRepo.create({
-          runId,
-          path: item.path,
-          sizeBytes: String(item.sizeBytes),
-          storageKey,
-        }),
-      );
-    }
   }
 
   private toSummary(run: AgentRun): AgentRunSummary {
@@ -164,20 +132,6 @@ export class RunsService {
       createdAt: run.createdAt.toISOString(),
       updatedAt: run.updatedAt.toISOString(),
       completedAt: run.completedAt?.toISOString() ?? null,
-    };
-  }
-
-  private toArtifactSummary(artifact: Artifact): ArtifactSummary {
-    return {
-      id: artifact.id,
-      runId: artifact.runId,
-      path: artifact.path,
-      sizeBytes: Number(artifact.sizeBytes),
-      storageKey: artifact.storageKey,
-      downloadUrl: artifact.storageKey
-        ? this.artifactStorage.publicUrl(artifact.storageKey)
-        : null,
-      createdAt: artifact.createdAt.toISOString(),
     };
   }
 }

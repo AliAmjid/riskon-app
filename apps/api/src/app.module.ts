@@ -4,7 +4,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { RunsModule } from './runs/runs.module.js';
 import { AgentRun } from './database/entities/agent-run.entity.js';
 import { RunEvent } from './database/entities/run-event.entity.js';
-import { Artifact } from './database/entities/artifact.entity.js';
 import { HealthController } from './health.controller.js';
 
 @Module({
@@ -16,7 +15,7 @@ import { HealthController } from './health.controller.js';
       useFactory: (config: ConfigService) => ({
         type: 'postgres',
         url: config.getOrThrow<string>('DATABASE_URL'),
-        entities: [AgentRun, RunEvent, Artifact],
+        entities: [AgentRun, RunEvent],
         synchronize: config.get<string>('NODE_ENV') !== 'production',
         logging: config.get<string>('DB_LOGGING') === 'true',
       }),

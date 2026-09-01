@@ -1,4 +1,4 @@
-import type { CreateRunRequest, AgentRunSummary, ArtifactSummary, RunEventPayload } from '@riskon/shared';
+import type { CreateRunRequest, AgentRunSummary, RunEventPayload } from '@riskon/shared';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '/api';
 
@@ -31,10 +31,6 @@ export function createRun(body: CreateRunRequest): Promise<AgentRunSummary> {
 
 export function listRunEvents(id: string): Promise<RunEventPayload[]> {
   return request(`/runs/${id}/events`);
-}
-
-export function listRunArtifacts(id: string): Promise<ArtifactSummary[]> {
-  return request(`/runs/${id}/artifacts`);
 }
 
 export function apiBaseUrl(): string {

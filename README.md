@@ -5,7 +5,7 @@ Monorepo that triggers [riskon-agent](https://github.com/AliAmjid/riskon-agent) 
 ```
 riskon-app/
 ├── apps/
-│   ├── api/          NestJS — agent orchestration, WebSocket events, Postgres, MinIO
+│   ├── api/          NestJS — agent orchestration, WebSocket events, Postgres
 │   └── web/          React + Vite — submit runs, watch live events
 ├── packages/
 │   └── shared/       Shared TypeScript types
@@ -30,11 +30,6 @@ for await (const event of run.stream()) {
 }
 
 const result = await run.wait();
-const artifacts = await agent.listArtifacts(); // cloud runs
-
-for (const artifact of artifacts) {
-  await s3.upload(`agent-runs/${runId}/${artifact.path}`, await agent.downloadArtifact(artifact.path));
-}
 ```
 
 Local runs execute against a mounted `riskon-agent` checkout. Cloud runs clone a repository on a Cursor VM instead.
@@ -57,7 +52,6 @@ docker compose up --build
 
 - Web UI: http://localhost:5173
 - API: http://localhost:3000/health
-- MinIO console: http://localhost:9001 (minioadmin / minioadmin)
 
 ## Local development
 
@@ -67,7 +61,7 @@ npm install
 npm run build -w @riskon/shared
 
 # Terminal 1 — infrastructure
-docker compose up postgres minio minio-init
+docker compose up postgres
 
 # Terminal 2 — API + web
 npm run dev
@@ -84,8 +78,6 @@ Set `RISKON_AGENT_PATH` to your local riskon-agent directory when running the AP
 | `GET` | `/runs` | List runs |
 | `GET` | `/runs/:id` | Run details |
 | `GET` | `/runs/:id/events` | Stored SDK events |
-| `GET` | `/runs/:id/artifacts` | Uploaded artifacts |
-
 WebSocket: connect to the API origin and emit `run:subscribe` with `{ runId }`. Events arrive on `run:event` and status patches on `run:updated`.
 
 ## No auth (for now)

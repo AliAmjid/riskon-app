@@ -6,11 +6,7 @@ import {
   Post,
   ValidationPipe,
 } from '@nestjs/common';
-import type {
-  AgentRunSummary,
-  ArtifactSummary,
-  RunEventPayload,
-} from '@riskon/shared';
+import type { AgentRunSummary, RunEventPayload } from '@riskon/shared';
 import { RunsService } from './runs.service.js';
 import { CreateRunDto } from './dto/create-run.dto.js';
 
@@ -39,10 +35,5 @@ export class RunsController {
   @Get(':id/events')
   listEvents(@Param('id') id: string): Promise<RunEventPayload[]> {
     return this.runsService.listEvents(id);
-  }
-
-  @Get(':id/artifacts')
-  listArtifacts(@Param('id') id: string): Promise<ArtifactSummary[]> {
-    return this.runsService.listArtifacts(id);
   }
 }

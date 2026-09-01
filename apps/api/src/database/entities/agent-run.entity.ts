@@ -8,7 +8,6 @@ import {
 } from 'typeorm';
 import type { RunStatus, AgentRuntime } from '@riskon/shared';
 import { RunEvent } from './run-event.entity.js';
-import { Artifact } from './artifact.entity.js';
 
 @Entity('agent_runs')
 export class AgentRun {
@@ -56,7 +55,4 @@ export class AgentRun {
 
   @OneToMany(() => RunEvent, (event) => event.run)
   events!: RunEvent[];
-
-  @OneToMany(() => Artifact, (artifact) => artifact.run)
-  artifacts!: Artifact[];
 }

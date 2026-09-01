@@ -40,13 +40,3 @@ export interface RunEventPayload {
   payload: unknown;
   createdAt: string;
 }
-
-export interface ArtifactSummary {
-  id: string;
-  runId: string;
-  path: string;
-  sizeBytes: number;
-  storageKey: string | null;
-  downloadUrl: string | null;
-  createdAt: string;
-}

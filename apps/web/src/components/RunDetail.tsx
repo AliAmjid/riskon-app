@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { AgentRunSummary, ArtifactSummary, RunEventPayload } from '@riskon/shared';
-import { getRun, listRunArtifacts, listRunEvents } from '../api';
+import type { AgentRunSummary, RunEventPayload } from '@riskon/shared';
+import { getRun, listRunEvents } from '../api';
 import { useRunEvents } from '../hooks/useRunEvents';
 
 interface Props {
@@ -11,19 +11,16 @@ interface Props {
 export function RunDetail({ runId, onBack }: Props) {
   const [run, setRun] = useState<AgentRunSummary | null>(null);
   const [history, setHistory] = useState<RunEventPayload[]>([]);
-  const [artifacts, setArtifacts] = useState<ArtifactSummary[]>([]);
   const { events: liveEvents, connected } = useRunEvents(runId);
 
   useEffect(() => {
     void getRun(runId).then(setRun);
     void listRunEvents(runId).then(setHistory);
-    void listRunArtifacts(runId).then(setArtifacts);
   }, [runId]);
 
   useEffect(() => {
     const interval = setInterval(() => {
       void getRun(runId).then(setRun);
-      void listRunArtifacts(runId).then(setArtifacts);
     }, 5000);
     return () => clearInterval(interval);
   }, [runId]);
@@ -71,24 +68,6 @@ export function RunDetail({ runId, onBack }: Props) {
           </ul>
         </div>
 
-        <div className="card">
-          <h3>Artifacts ({artifacts.length})</h3>
-          {artifacts.length === 0 ? (
-            <p className="muted">No artifacts uploaded yet. Cloud runs expose SDK artifacts; local runs write to disk under runs/.</p>
-          ) : (
-            <ul className="artifacts">
-              {artifacts.map((artifact) => (
-                <li key={artifact.id}>
-                  <span>{artifact.path}</span>
-                  <span>{artifact.sizeBytes} B</span>
-                  {artifact.downloadUrl && (
-                    <a href={artifact.downloadUrl} target="_blank" rel="noreferrer">Download</a>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
       </div>
     </section>
   );
