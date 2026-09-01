@@ -11,6 +11,7 @@ interface Props {
   onSelectSession: (sessionId: string) => void;
   onNewSession: () => void;
   agentStatus?: 'ready' | 'busy' | 'offline';
+  agentStatusLabel?: string;
   inputView: ReactNode;
   resultsView: ReactNode;
 }
@@ -23,12 +24,18 @@ export function AppShell({
   onSelectSession,
   onNewSession,
   agentStatus,
+  agentStatusLabel,
   inputView,
   resultsView,
 }: Props) {
   return (
     <div className="app">
-      <TopBar activeView={activeView} onViewChange={onViewChange} agentStatus={agentStatus} />
+      <TopBar
+        activeView={activeView}
+        onViewChange={onViewChange}
+        agentStatus={agentStatus}
+        agentStatusLabel={agentStatusLabel}
+      />
 
       <section
         className={`view ${activeView === 'input' ? 'active' : ''}`}

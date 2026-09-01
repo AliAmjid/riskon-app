@@ -1,98 +1,121 @@
-import type { ChangeEvent } from 'react';
-import type { NormalizedRiskSenseResult, RiskSenseResult } from '../../types/risksense';
-import { normalizeRiskSenseResult } from '../../utils/riskResult';
-import { DecisionsTable } from './DecisionsTable';
+import { useEffect, useState } from 'react';
+import type { AgentRunSummary, RunArtifactSummary } from '@riskon/shared';
+import { ArtifactList } from './ArtifactList';
+import { ArtifactViewer } from './ArtifactViewer';
 import { KpiGrid } from './KpiGrid';
 
 interface Props {
-  result: RiskSenseResult;
-  onLoadJson?: (result: RiskSenseResult) => void;
+  run: AgentRunSummary | null;
+  artifacts: RunArtifactSummary[];
+  /** The agent's closing summary, which is the sentence to lead with. */
+  headline: string | null;
 }
 
-function RecommendationPanel({ result }: { result: NormalizedRiskSenseResult }) {
-  return (
-    <section className="panel">
-      <p className="panel-kicker">Recommended action</p>
-      <div className="status-banner">
-        <span>Solution status</span>
-        <strong>{result.status}</strong>
-      </div>
-      <p className="recommendation">{result.recommendation}</p>
-    </section>
+const STATUS_COPY: Record<AgentRunSummary['status'], string> = {
+  pending: 'Starting',
+  running: 'Working',
+  awaiting_input: 'Waiting on you',
+  finished: 'Done',
+  error: 'Stopped early',
+  cancelled: 'Cancelled',
+};
+
+function formatDuration(run: AgentRunSummary): string {
+  const end = run.completedAt ? new Date(run.completedAt) : new Date();
+  const seconds = Math.max(
+    0,
+    Math.round((end.getTime() - new Date(run.createdAt).getTime()) / 1000),
   );
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${seconds % 60}s`;
 }
 
-function TranslationPanel({ translation }: { translation: string }) {
-  return (
-    <section className="panel">
-      <p className="panel-kicker">How we translated your question</p>
-      <p className="model-copy">{translation}</p>
-    </section>
-  );
-}
+export function ResultsView({ run, artifacts, headline }: Props) {
+  const [selected, setSelected] = useState<RunArtifactSummary | null>(null);
 
-function ExplanationPanel({ explanation }: { explanation: string }) {
-  return (
-    <section className="panel">
-      <p className="panel-kicker">Why this recommendation</p>
-      <p className="explanation-copy">{explanation}</p>
-    </section>
-  );
-}
+  // Default to the report: it is the one file written for the reader.
+  useEffect(() => {
+    setSelected((current) => {
+      if (current && artifacts.some((a) => a.id === current.id)) return current;
+      return (
+        artifacts.find((a) => a.path === 'report.md') ??
+        artifacts.find((a) => a.isPreviewable) ??
+        null
+      );
+    });
+  }, [artifacts]);
 
-export function ResultsView({ result, onLoadJson }: Props) {
-  const normalized = normalizeRiskSenseResult(result);
-
-  function onJsonSelected(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file || !onLoadJson) return;
-
-    void file.text().then(
-      (text) => {
-        onLoadJson(JSON.parse(text) as RiskSenseResult);
-      },
-      () => {
-        window.alert('Could not read this JSON file.');
-      },
+  if (!run) {
+    return (
+      <main className="results-workspace">
+        <div className="results-header">
+          <div>
+            <h1>No run selected</h1>
+            <p>Start one from the Input tab and the results will appear here.</p>
+          </div>
+        </div>
+      </main>
     );
-
-    event.target.value = '';
   }
+
+  const waiting = run.status === 'pending' || run.status === 'running';
 
   return (
     <main className="results-workspace">
       <div className="results-header">
         <div>
-          <h1>{normalized.title}</h1>
-          <p>{normalized.subtitle}</p>
-        </div>
-        <label className="json-button" htmlFor="json-file">
-          Load result JSON
-        </label>
-        <input
-          className="sr-only"
-          id="json-file"
-          type="file"
-          accept=".json,application/json"
-          onChange={onJsonSelected}
-        />
-      </div>
-
-      <KpiGrid metrics={normalized.metrics} />
-
-      <div className="results-grid">
-        <div className="results-column">
-          <RecommendationPanel result={normalized} />
-          <DecisionsTable
-            decisions={normalized.decisions}
-            fallbackRecommendation={normalized.recommendation}
-          />
-        </div>
-        <div className="results-column">
-          <TranslationPanel translation={normalized.translation} />
-          <ExplanationPanel explanation={normalized.explanation} />
+          <h1>{run.title}</h1>
+          <p>{run.businessQuestion}</p>
         </div>
       </div>
+
+      <KpiGrid
+        metrics={[
+          { label: 'Status', value: STATUS_COPY[run.status] },
+          { label: 'Files produced', value: String(run.artifactCount) },
+          { label: 'Time taken', value: formatDuration(run) },
+        ]}
+      />
+
+      <section className="panel">
+        <p className="panel-kicker">Recommendation</p>
+        {run.errorMessage ? (
+          <p className="recommendation">{run.errorMessage}</p>
+        ) : headline ? (
+          <p className="recommendation">{headline}</p>
+        ) : (
+          <p className="model-copy">
+            {waiting
+              ? 'The agent is still working. This fills in as soon as it reports back.'
+              : 'The agent did not leave a summary. Open the report below.'}
+          </p>
+        )}
+      </section>
+
+      {artifacts.length === 0 ? (
+        <section className="panel">
+          <h2>Files the agent produced</h2>
+          <p className="model-copy">
+            {waiting
+              ? 'Nothing yet. Files appear here as soon as the agent publishes them.'
+              : 'The agent published nothing. The activity feed on the Input tab shows how far it got.'}
+          </p>
+        </section>
+      ) : (
+        <div className="results-grid">
+          <div className="results-column">
+            <ArtifactList
+              artifacts={artifacts}
+              selectedId={selected?.id ?? null}
+              onSelect={setSelected}
+            />
+          </div>
+          <div className="results-column">
+            <ArtifactViewer artifact={selected} />
+          </div>
+        </div>
+      )}
     </main>
   );
 }

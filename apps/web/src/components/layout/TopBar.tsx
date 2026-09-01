@@ -5,9 +5,15 @@ interface Props {
   activeView: WorkspaceView;
   onViewChange: (view: WorkspaceView) => void;
   agentStatus?: 'ready' | 'busy' | 'offline';
+  agentStatusLabel?: string;
 }
 
-export function TopBar({ activeView, onViewChange, agentStatus = 'ready' }: Props) {
+export function TopBar({
+  activeView,
+  onViewChange,
+  agentStatus = 'ready',
+  agentStatusLabel,
+}: Props) {
   return (
     <header className="topbar">
       <div className="brand" aria-label="RiskSense AI">
@@ -32,7 +38,7 @@ export function TopBar({ activeView, onViewChange, agentStatus = 'ready' }: Prop
       </nav>
 
       <div className="status-area">
-        <StatusPill status={agentStatus} />
+        <StatusPill status={agentStatus} label={agentStatusLabel} />
       </div>
     </header>
   );

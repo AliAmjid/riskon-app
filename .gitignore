@@ -9,3 +9,8 @@ coverage/
 apps/api/dist/
 apps/web/dist/
 packages/shared/dist/
+
+# Uploaded datasets and downloaded run artifacts. Per-run output, not content.
+# Anchored so apps/api/src/storage/ (the StorageService) stays tracked.
+/storage/
+/apps/api/storage/

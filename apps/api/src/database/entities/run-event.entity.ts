@@ -6,7 +6,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { AgentRun } from './agent-run.entity.js';
+import type { AgentRun } from './agent-run.entity.js';
 
 @Entity('run_events')
 export class RunEvent {
@@ -16,7 +16,10 @@ export class RunEvent {
   @Column({ type: 'uuid' })
   runId!: string;
 
-  @ManyToOne(() => AgentRun, (run) => run.events, { onDelete: 'CASCADE' })
+  // Referenced by entity name, not by class: AgentRun imports this module to
+  // declare its side of the relation, and a value import back would close an
+  // ESM cycle that fails at load time. The `import type` above is erased.
+  @ManyToOne('AgentRun', 'events', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'runId' })
   run!: AgentRun;
 

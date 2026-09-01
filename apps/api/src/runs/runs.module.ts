@@ -1,15 +1,23 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AgentRun } from '../database/entities/agent-run.entity.js';
-import { RunEvent } from '../database/entities/run-event.entity.js';
+import { RunArtifact } from '../database/entities/run-artifact.entity.js';
 import { CursorAgentService } from '../cursor/cursor-agent.service.js';
-import { EventsGateway } from '../events/events.gateway.js';
+import { QuestionsModule } from '../questions/questions.module.js';
+import { TimelineModule } from '../timeline/timeline.module.js';
+import { DatasetsModule } from '../datasets/datasets.module.js';
 import { RunsController } from './runs.controller.js';
 import { RunsService } from './runs.service.js';
+import { RunArtifactsService } from './run-artifacts.service.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([AgentRun, RunEvent])],
+  imports: [
+    TypeOrmModule.forFeature([AgentRun, RunArtifact]),
+    QuestionsModule,
+    TimelineModule,
+    DatasetsModule,
+  ],
   controllers: [RunsController],
-  providers: [RunsService, CursorAgentService, EventsGateway],
+  providers: [RunsService, RunArtifactsService, CursorAgentService],
 })
 export class RunsModule {}

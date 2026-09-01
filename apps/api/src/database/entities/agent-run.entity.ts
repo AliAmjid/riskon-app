@@ -2,12 +2,15 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import type { RunStatus, AgentRuntime } from '@riskon/shared';
 import { RunEvent } from './run-event.entity.js';
+import { RunArtifact } from './run-artifact.entity.js';
+import { RunQuestionRound } from './run-question.entity.js';
 
 @Entity('agent_runs')
 export class AgentRun {
@@ -20,17 +23,33 @@ export class AgentRun {
   @Column({ type: 'text' })
   businessQuestion!: string;
 
+  /** A URL the agent loads directly. Derived from `datasetId` when uploaded. */
   @Column({ type: 'varchar', length: 1024, nullable: true })
   dataSource!: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  datasetId!: string | null;
 
   @Column({ type: 'varchar', length: 64, nullable: true })
   template!: string | null;
 
-  @Column({ type: 'varchar', length: 16, default: 'local' })
+  @Column({ type: 'varchar', length: 16, default: 'cloud' })
   runtime!: AgentRuntime;
+
+  @Column({ type: 'varchar', length: 1024, nullable: true })
+  repositoryUrl!: string | null;
 
   @Column({ type: 'varchar', length: 32, default: 'pending' })
   status!: RunStatus;
+
+  /**
+   * Bearer of the MCP endpoint for this run. The agent's inline MCP server URL
+   * ends with this token; it is how a tool call from inside the cloud VM is
+   * attributed back to a run without trusting anything the agent says.
+   */
+  @Index({ unique: true })
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  mcpToken!: string | null;
 
   @Column({ type: 'varchar', length: 128, nullable: true })
   cursorAgentId!: string | null;
@@ -55,4 +74,10 @@ export class AgentRun {
 
   @OneToMany(() => RunEvent, (event) => event.run)
   events!: RunEvent[];
+
+  @OneToMany(() => RunArtifact, (artifact) => artifact.run)
+  artifacts!: RunArtifact[];
+
+  @OneToMany(() => RunQuestionRound, (question) => question.run)
+  questions!: RunQuestionRound[];
 }

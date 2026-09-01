@@ -1,7 +1,15 @@
-import { IsIn, IsOptional, IsString, IsUrl, MaxLength, MinLength } from 'class-validator';
-import type { AgentRuntime } from '@riskon/shared';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  IsUrl,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+import type { AgentRuntime, CreateRunRequest } from '@riskon/shared';
 
-export class CreateRunDto {
+export class CreateRunDto implements CreateRunRequest {
   @IsString()
   @MinLength(3)
   @MaxLength(255)
@@ -10,6 +18,10 @@ export class CreateRunDto {
   @IsString()
   @MinLength(10)
   businessQuestion!: string;
+
+  @IsOptional()
+  @IsUUID()
+  datasetId?: string;
 
   @IsOptional()
   @IsString()
@@ -28,4 +40,9 @@ export class CreateRunDto {
   @IsOptional()
   @IsUrl()
   repositoryUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  startingRef?: string;
 }

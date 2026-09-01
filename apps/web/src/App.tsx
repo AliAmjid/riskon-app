@@ -1,147 +1,208 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type {
+  AgentRunSummary,
+  AnswerQuestionsRequest,
+  DatasetSummary,
+} from '@riskon/shared';
 import { AppShell, InputView, ResultsView } from './components';
-import type { ChatMessage, DataPreview, RiskSenseResult, SessionSummary, WorkspaceView } from './types/risksense';
-import { sampleRiskSenseResult } from './utils/riskResult';
+import { createRun, listRuns, uploadDataset } from './api';
+import { useRun } from './hooks/useRun';
+import { toActivity, lastAgentMessage } from './utils/runEvents';
+import { parseCSV } from './utils/csv';
+import type { DataPreview, SessionSummary, WorkspaceView } from './types/risksense';
 
-const mockSessions: SessionSummary[] = [
-  { id: 'session-1', title: 'Asset Portfolio - Diamonds', updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
-  { id: 'session-2', title: 'VaR Portfolio Review', updatedAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString() },
-  { id: 'session-3', title: 'Stress Test Scenarios', updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
-  { id: 'session-4', title: 'Counterparty Exposure', updatedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString() },
-];
-
-const initialPreview: DataPreview = {
-  rowCount: 1247,
-  columnCount: 12,
-  headers: ['Carat', 'Cut', 'Color', 'Clarity', 'Depth', 'Price'],
-  rows: [
-    ['0.23', 'Ideal', 'E', 'SI2', '61.5', '326'],
-    ['0.21', 'Premium', 'E', 'SI1', '59.6', '326'],
-    ['0.23', 'Good', 'E', 'VS1', '56.9', '327'],
-    ['0.29', 'Premium', 'I', 'VS2', '62.4', '337'],
-    ['0.31', 'Good', 'J', 'VVS2', '62.8', '335'],
-  ],
+const EMPTY_PREVIEW: DataPreview = {
+  rowCount: 0,
+  columnCount: 0,
+  headers: [],
+  rows: [],
 };
 
-const initialMessages: ChatMessage[] = [
-  {
-    id: 'msg-1',
-    role: 'user',
-    content:
-      'A high-end jeweler in Zurich needs to deploy a fixed line of credit. Find the best diversified diamond portfolio within the budget and display-space limits.',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'msg-2',
-    role: 'agent',
-    content: 'Upload your data, then tell me the decision you need to make and the constraints I should respect.',
-    createdAt: new Date().toISOString(),
-  },
-];
-
-function createId(prefix: string): string {
-  return `${prefix}-${crypto.randomUUID()}`;
+/** A run's title, derived from its question so the sidebar reads sensibly. */
+function titleFor(question: string): string {
+  const firstSentence = question.split(/[.?!\n]/)[0].trim();
+  const title = firstSentence || question.trim();
+  return title.length > 70 ? `${title.slice(0, 67)}…` : title;
 }
 
 export default function App() {
   const [activeView, setActiveView] = useState<WorkspaceView>('input');
-  const [sessions, setSessions] = useState(mockSessions);
-  const [activeSessionId, setActiveSessionId] = useState(mockSessions[0].id);
-  const [preview, setPreview] = useState<DataPreview>(initialPreview);
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
-  const [result, setResult] = useState<RiskSenseResult>(sampleRiskSenseResult);
-  const [agentStatus, setAgentStatus] = useState<'ready' | 'busy' | 'offline'>('ready');
+  const [runs, setRuns] = useState<AgentRunSummary[]>([]);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
-  const activeSession = useMemo(
-    () => sessions.find((session) => session.id === activeSessionId) ?? sessions[0],
-    [activeSessionId, sessions],
+  const [dataset, setDataset] = useState<DatasetSummary | null>(null);
+  const [preview, setPreview] = useState<DataPreview>(EMPTY_PREVIEW);
+  const [uploading, setUploading] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const {
+    run,
+    events,
+    artifacts,
+    pendingQuestion,
+    answer,
+    error: runError,
+  } = useRun(activeRunId);
+
+  const refreshRuns = useCallback(async () => {
+    try {
+      setRuns(await listRuns());
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Could not reach the API. Is it running?',
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshRuns();
+  }, [refreshRuns]);
+
+  // Keep the sidebar's copy of the active run in step with the live one, so its
+  // status and title do not go stale while a run progresses.
+  useEffect(() => {
+    if (!run) return;
+    setRuns((current) =>
+      current.map((existing) => (existing.id === run.id ? run : existing)),
+    );
+  }, [run]);
+
+  const activity = useMemo(() => toActivity(events), [events]);
+  const headline = useMemo(
+    () => run?.result ?? lastAgentMessage(activity),
+    [run, activity],
   );
+
+  const working =
+    starting || run?.status === 'pending' || run?.status === 'running';
+
+  const sessions: SessionSummary[] = useMemo(
+    () =>
+      runs.map((item) => ({
+        id: item.id,
+        title: item.title,
+        updatedAt: item.updatedAt,
+      })),
+    [runs],
+  );
+
+  // -------------------------------------------------------------------------
+  // Actions
+  // -------------------------------------------------------------------------
+
+  const handleFileSelected = useCallback(async (file: File) => {
+    setUploading(true);
+    setError(null);
+
+    // Preview locally for immediate feedback; the upload is what the agent uses.
+    if (/\.(csv|tsv|txt)$/i.test(file.name)) {
+      try {
+        setPreview({ ...parseCSV(await file.text()), fileName: file.name });
+      } catch {
+        setPreview({ ...EMPTY_PREVIEW, fileName: file.name });
+      }
+    } else {
+      setPreview({ ...EMPTY_PREVIEW, fileName: file.name });
+    }
+
+    try {
+      setDataset(await uploadDataset(file));
+    } catch (cause) {
+      setDataset(null);
+      setError(cause instanceof Error ? cause.message : 'Could not upload that file.');
+    } finally {
+      setUploading(false);
+    }
+  }, []);
+
+  const handleAskQuestion = useCallback(
+    async (question: string) => {
+      setStarting(true);
+      setError(null);
+      try {
+        const created = await createRun({
+          title: titleFor(question),
+          businessQuestion: question,
+          datasetId: dataset?.id,
+          runtime: 'cloud',
+        });
+        setRuns((current) => [created, ...current]);
+        setActiveRunId(created.id);
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : 'Could not start the run.',
+        );
+      } finally {
+        setStarting(false);
+      }
+    },
+    [dataset],
+  );
+
+  const handleAnswerQuestion = useCallback(
+    async (body: AnswerQuestionsRequest) => {
+      if (!pendingQuestion) return;
+      await answer(pendingQuestion.id, body);
+    },
+    [pendingQuestion, answer],
+  );
+
+  const handleNewSession = useCallback(() => {
+    setActiveRunId(null);
+    setDataset(null);
+    setPreview(EMPTY_PREVIEW);
+    setError(null);
+    setActiveView('input');
+  }, []);
+
+  const handleSelectSession = useCallback((runId: string) => {
+    setActiveRunId(runId);
+    setError(null);
+  }, []);
 
   const handleViewChange = useCallback((view: WorkspaceView) => {
     setActiveView(view);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  const handleNewSession = useCallback(() => {
-    const session: SessionSummary = {
-      id: createId('session'),
-      title: 'New optimization session',
-      updatedAt: new Date().toISOString(),
-    };
-    setSessions((current) => [session, ...current]);
-    setActiveSessionId(session.id);
-    setMessages([
-      {
-        id: createId('msg'),
-        role: 'agent',
-        content: 'Upload a dataset and describe the decision you need to optimize.',
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-    setPreview({ rowCount: 0, columnCount: 0, headers: [], rows: [] });
-    setActiveView('input');
-  }, []);
-
-  const handleSendMessage = useCallback((question: string) => {
-    const userMessage: ChatMessage = {
-      id: createId('msg'),
-      role: 'user',
-      content: question,
-      createdAt: new Date().toISOString(),
-    };
-    const processingMessage: ChatMessage = {
-      id: createId('msg'),
-      role: 'agent',
-      content: 'Processing scenario…',
-      createdAt: new Date().toISOString(),
-      processing: true,
-    };
-
-    setMessages((current) => [...current, userMessage, processingMessage]);
-    setAgentStatus('busy');
-
-    window.setTimeout(() => {
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === processingMessage.id
-            ? {
-                ...message,
-                processing: false,
-                content:
-                  'The scenario is ready. Open Results to review the recommended action and model translation.',
-              }
-            : message,
-        ),
-      );
-      setAgentStatus('ready');
-    }, 900);
-  }, []);
-
-  const handleLoadResult = useCallback((nextResult: RiskSenseResult) => {
-    setResult(nextResult);
-    setActiveView('results');
-  }, []);
+  // A run that is waiting on an answer is not busy; it is blocked on the person
+  // reading this, and the status pill should not claim otherwise.
+  const agentStatus =
+    pendingQuestion !== null ? 'offline' : working ? 'busy' : 'ready';
 
   return (
     <AppShell
       activeView={activeView}
       onViewChange={handleViewChange}
       sessions={sessions}
-      activeSessionId={activeSession.id}
-      onSelectSession={setActiveSessionId}
+      activeSessionId={activeRunId ?? ''}
+      onSelectSession={handleSelectSession}
       onNewSession={handleNewSession}
       agentStatus={agentStatus}
+      agentStatusLabel={
+        pendingQuestion !== null ? 'Waiting on you' : undefined
+      }
       inputView={
         <InputView
-          title={activeSession.title}
+          title={run?.title ?? 'New optimisation session'}
           preview={preview}
-          messages={messages}
-          onPreviewChange={setPreview}
-          onSendMessage={handleSendMessage}
-          chatDisabled={agentStatus === 'busy'}
+          activity={activity}
+          pendingQuestion={pendingQuestion}
+          working={working}
+          uploading={uploading}
+          datasetLabel={dataset?.filename ?? null}
+          error={error ?? runError}
+          onFileSelected={(file) => void handleFileSelected(file)}
+          onAskQuestion={(question) => void handleAskQuestion(question)}
+          onAnswerQuestion={handleAnswerQuestion}
         />
       }
-      resultsView={<ResultsView result={result} onLoadJson={handleLoadResult} />}
+      resultsView={
+        <ResultsView run={run} artifacts={artifacts} headline={headline} />
+      }
     />
   );
 }

@@ -1,59 +1,46 @@
-import { useRef, useState, type ChangeEvent, type DragEvent } from 'react';
-import type { DataPreview } from '../../types/risksense';
-import { parseCSV } from '../../utils/csv';
+import { useState, type ChangeEvent, type DragEvent } from 'react';
 
 interface Props {
   fileName?: string;
-  onPreview: (preview: DataPreview) => void;
-  onError?: (message: string) => void;
+  uploading?: boolean;
+  onFileSelected: (file: File) => void;
 }
 
 function UploadIcon() {
   return (
-    <svg className="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+    <svg
+      className="upload-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      aria-hidden="true"
+    >
       <path d="M12 16V5m0 0-4 4m4-4 4 4" />
       <path d="M5 15a4 4 0 0 1 .7-7.94A6 6 0 0 1 17.3 8.5 3.5 3.5 0 0 1 18 15" />
     </svg>
   );
 }
 
-export function UploadCard({ fileName = 'No file selected', onPreview, onError }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null);
+export function UploadCard({
+  fileName = 'No file selected',
+  uploading = false,
+  onFileSelected,
+}: Props) {
   const [dragging, setDragging] = useState(false);
-  const [selectedName, setSelectedName] = useState(fileName);
-
-  async function handleFile(file: File | undefined) {
-    if (!file) return;
-
-    setSelectedName(file.name);
-
-    if (file.name.toLowerCase().endsWith('.csv') || file.type === 'text/csv') {
-      try {
-        const parsed = parseCSV(await file.text());
-        onPreview({ ...parsed, fileName: file.name });
-      } catch (error) {
-        onError?.(error instanceof Error ? error.message : 'Could not preview this CSV.');
-      }
-      return;
-    }
-
-    onPreview({
-      rowCount: 0,
-      columnCount: 0,
-      headers: [],
-      rows: [],
-      fileName: file.name,
-    });
-  }
 
   function onInputChange(event: ChangeEvent<HTMLInputElement>) {
-    void handleFile(event.target.files?.[0]);
+    const file = event.target.files?.[0];
+    if (file) onFileSelected(file);
+    // Reset so selecting the same file twice still fires a change event.
+    event.target.value = '';
   }
 
   function onDrop(event: DragEvent<HTMLElement>) {
     event.preventDefault();
     setDragging(false);
-    void handleFile(event.dataTransfer.files[0]);
+    const file = event.dataTransfer.files[0];
+    if (file) onFileSelected(file);
   }
 
   return (
@@ -76,19 +63,21 @@ export function UploadCard({ fileName = 'No file selected', onPreview, onError }
     >
       <UploadIcon />
       <h2 id="upload-title">Upload Data</h2>
-      <p>Drag &amp; drop a CSV or XLSX file</p>
+      <p>Drag &amp; drop a CSV, TSV or spreadsheet</p>
       <label className="file-button" htmlFor="csv-file">
         Browse files
       </label>
       <input
-        ref={inputRef}
         className="sr-only"
         id="csv-file"
         type="file"
-        accept=".csv,.xlsx,.xls,text/csv"
+        accept=".csv,.tsv,.txt,.json,.jsonl,.parquet,.xlsx,.xls"
         onChange={onInputChange}
+        disabled={uploading}
       />
-      <div className="file-name">{selectedName}</div>
+      <div className="file-name">
+        {uploading ? 'Uploading…' : fileName}
+      </div>
     </section>
   );
 }
