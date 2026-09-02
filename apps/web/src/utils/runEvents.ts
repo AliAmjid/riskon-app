@@ -9,6 +9,7 @@ import type { RunEventPayload } from '@riskon/shared';
 export interface ActivityEntry {
   id: string;
   kind: 'say' | 'do' | 'note' | 'thinking';
+  actor: 'agent' | 'user' | 'system';
   text: string;
   createdAt: string;
 }
@@ -45,6 +46,39 @@ function labelForTool(name: string): string {
   return name.replace(/_/g, ' ');
 }
 
+function textFromMessage(message: unknown): string {
+  if (typeof message === 'string') return message;
+  const typed = message as { content?: TextBlock[]; text?: string } | undefined;
+  if (typed?.text) return typed.text;
+  return (typed?.content ?? [])
+    .filter((block) => block.type === 'text' && block.text)
+    .map((block) => block.text!)
+    .join('\n\n');
+}
+
+function appendSpeech(
+  entries: ActivityEntry[],
+  event: RunEventPayload,
+  actor: 'agent' | 'user',
+  text: string,
+): void {
+  if (!text.trim()) return;
+
+  const previous = entries.at(-1);
+  if (previous?.kind === 'say' && previous.actor === actor) {
+    previous.text = `${previous.text}${text}`;
+    return;
+  }
+
+  entries.push({
+    id: event.id,
+    kind: 'say',
+    actor,
+    text,
+    createdAt: event.createdAt,
+  });
+}
+
 /**
  * Turn the raw Cursor event stream into something worth reading.
  *
@@ -62,19 +96,14 @@ export function toActivity(events: RunEventPayload[]): ActivityEntry[] {
 
     switch (event.eventType) {
       case 'assistant': {
-        const message = payload.message as { content?: TextBlock[] } | undefined;
-        const text = (message?.content ?? [])
-          .filter((block) => block.type === 'text' && block.text?.trim())
-          .map((block) => block.text!.trim())
-          .join('\n\n');
-        if (text) {
-          entries.push({
-            id: event.id,
-            kind: 'say',
-            text,
-            createdAt: event.createdAt,
-          });
-        }
+        const text = textFromMessage(payload.message);
+        appendSpeech(entries, event, 'agent', text);
+        break;
+      }
+
+      case 'user': {
+        const text = textFromMessage(payload.message ?? payload);
+        appendSpeech(entries, event, 'user', text);
         break;
       }
 
@@ -86,6 +115,7 @@ export function toActivity(events: RunEventPayload[]): ActivityEntry[] {
         entries.push({
           id: event.id,
           kind: 'do',
+          actor: 'system',
           text: labelForTool(String(payload.name ?? 'working')),
           createdAt: event.createdAt,
         });
@@ -96,6 +126,7 @@ export function toActivity(events: RunEventPayload[]): ActivityEntry[] {
         entries.push({
           id: event.id,
           kind: 'note',
+          actor: 'system',
           text: String(payload.message ?? ''),
           createdAt: event.createdAt,
         });
@@ -108,6 +139,7 @@ export function toActivity(events: RunEventPayload[]): ActivityEntry[] {
           entries.push({
             id: event.id,
             kind: 'do',
+            actor: 'system',
             text,
             createdAt: event.createdAt,
           });
@@ -115,14 +147,18 @@ export function toActivity(events: RunEventPayload[]): ActivityEntry[] {
         break;
       }
 
-      // `thinking`, `system`, `status`, `usage` and `user` are either internal
+      // `thinking`, `system`, `status` and `usage` are either internal
       // bookkeeping or already reflected in the run's status pill.
       default:
         break;
     }
   }
 
-  return entries;
+  return entries.map((entry) =>
+    entry.kind === 'say' || entry.kind === 'note'
+      ? { ...entry, text: entry.text.trim() }
+      : entry,
+  );
 }
 
 /** The agent's closing summary, which is the sentence to lead with. */

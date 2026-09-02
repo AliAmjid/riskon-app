@@ -31,8 +31,12 @@ export function ActivityFeed({ entries, working, emptyMessage }: Props) {
         <p className="feed-empty">{emptyMessage}</p>
       )}
 
-      {entries.map((entry) =>
-        entry.kind === 'do' ? (
+      {entries.map((entry) => {
+        const isUser = entry.actor === 'user';
+        const rowClass = isUser ? 'user' : 'agent';
+        const mark = isUser ? 'You' : 'AI';
+
+        return entry.kind === 'do' ? (
           <div key={entry.id} className="activity-step">
             <span className="activity-tick" aria-hidden="true" />
             <span>{entry.text}</span>
@@ -40,16 +44,16 @@ export function ActivityFeed({ entries, working, emptyMessage }: Props) {
         ) : (
           <div
             key={entry.id}
-            className={`message-row agent ${entry.kind === 'note' ? 'note' : ''}`}
+            className={`message-row ${rowClass} ${entry.kind === 'note' ? 'note' : ''}`}
           >
-            <div className="agent-mark">AI</div>
+            <div className="agent-mark">{mark}</div>
             <div>
               <div className="bubble">{entry.text}</div>
               <div className="message-time">{formatTime(entry.createdAt)}</div>
             </div>
           </div>
-        ),
-      )}
+        );
+      })}
 
       {working && (
         <div className="message-row agent">

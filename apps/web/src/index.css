@@ -353,6 +353,16 @@ button {
   overflow-x: auto;
 }
 
+.preview-empty {
+  min-height: 170px;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  border: 1px dashed var(--line-strong);
+  color: var(--quiet);
+  text-align: center;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -407,6 +417,11 @@ tr:last-child td {
 
 .message-row.user {
   justify-content: flex-end;
+}
+
+.message-row.user .agent-mark {
+  order: 2;
+  background: var(--red);
 }
 
 .agent-mark {
