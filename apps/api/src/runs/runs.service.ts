@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomBytes } from 'node:crypto';
+import type { ConversationTurn } from '@cursor/sdk';
 import type {
   AgentRunSummary,
   CreateRunRequest,
@@ -9,6 +10,7 @@ import type {
 } from '@riskon/shared';
 import { AgentRun } from '../database/entities/agent-run.entity.js';
 import { CursorAgentService } from '../cursor/cursor-agent.service.js';
+import { timelineEventsFromTurn } from '../cursor/conversation-turn.js';
 import { EventsGateway } from '../events/events.gateway.js';
 import { RunTimelineService } from '../timeline/run-timeline.service.js';
 import { RunQuestionsService } from '../questions/run-questions.service.js';
@@ -168,7 +170,7 @@ export class RunsService {
         },
 
         onTranscriptTurn: async (turn) => {
-          await this.timeline.append(runId, turn.type, turn);
+          await this.appendTranscriptTurn(runId, turn);
         },
 
         onArtifact: async (artifact, body) => {
@@ -249,7 +251,7 @@ export class RunsService {
         },
 
         onTranscriptTurn: async (turn) => {
-          await this.timeline.append(runId, turn.type, turn);
+          await this.appendTranscriptTurn(runId, turn);
         },
 
         onArtifact: async (artifact, body) => {
@@ -290,6 +292,15 @@ export class RunsService {
         errorMessage:
           'Something went wrong on our side while continuing this. The earlier answer is still here.',
       });
+    }
+  }
+
+  private async appendTranscriptTurn(
+    runId: string,
+    turn: ConversationTurn,
+  ): Promise<void> {
+    for (const event of timelineEventsFromTurn(turn)) {
+      await this.timeline.append(runId, event.eventType, event.payload);
     }
   }
 

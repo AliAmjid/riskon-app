@@ -81,6 +81,31 @@ function recordingOptions(): {
   };
 }
 
+describe('CursorAgentService.buildPrompt', () => {
+  it('requires walkthrough.md as a published deliverable', () => {
+    const service = new CursorAgentService({
+      ...config,
+      agentRepositoryRef: 'main',
+    } as AppConfig);
+    const prompt = service.buildPrompt({
+      runId: 'run-under-test',
+      title: 'Fleet',
+      businessQuestion: 'Which vehicles should we buy?',
+      runtime: 'cloud',
+      mcpToken: 'tok',
+      onEvent: async () => {},
+      onTranscriptTurn: async () => {},
+      onAgentStarted: async () => {},
+      onArtifact: async () => {},
+    });
+
+    expect(prompt).toContain('walkthrough.md');
+    expect(prompt).toContain('turned their question into a search');
+    expect(prompt).toContain('Do not');
+    expect(prompt).toMatch(/finish without it/i);
+  });
+});
+
 describe('CursorAgentService, when a run outlives its event stream', () => {
   afterEach(() => {
     vi.restoreAllMocks();

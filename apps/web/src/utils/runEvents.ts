@@ -277,12 +277,70 @@ function blobsFrom(events: RunEventPayload[]): Blob[] {
         break;
       }
 
+      // Durable transcript after the live stream expires. Same work as the
+      // stream events above, packed into one turn with a different shape.
+      case 'agentConversationTurn': {
+        closeStreams();
+        blobs.push(...blobsFromConversationTurn(event.id, event.createdAt, payload));
+        break;
+      }
+
       default:
         break;
     }
   }
 
   return blobs.filter((blob) => blob.text.trim().length > 0);
+}
+
+/**
+ * Cursor's `conversation()` copy of a turn, used when the live stream died.
+ * Steps are thinking / assistant / tool, nested under `turn.steps`.
+ */
+function blobsFromConversationTurn(
+  eventId: string,
+  createdAt: string,
+  payload: Record<string, unknown>,
+): Blob[] {
+  const nested = payload.turn as { steps?: unknown[] } | undefined;
+  const steps = Array.isArray(nested?.steps) ? nested.steps : [];
+  const blobs: Blob[] = [];
+
+  for (const [index, raw] of steps.entries()) {
+    if (!raw || typeof raw !== 'object') continue;
+    const step = raw as Record<string, unknown>;
+    const message = (step.message ?? {}) as Record<string, unknown>;
+    const id = `${eventId}-${index}`;
+
+    if (step.type === 'thinkingMessage') {
+      const text = String(message.text ?? '').trim();
+      if (text) {
+        blobs.push({ id, kind: 'thinking', text, createdAt });
+      }
+      continue;
+    }
+
+    if (step.type === 'assistantMessage') {
+      const text = String(message.text ?? '').trim();
+      if (text) {
+        blobs.push({ id, kind: 'text', text, createdAt });
+      }
+      continue;
+    }
+
+    if (step.type === 'toolCall') {
+      const args = (message.args ?? {}) as Record<string, unknown>;
+      const name = String(args.toolName ?? message.type ?? 'working');
+      blobs.push({
+        id,
+        kind: 'tool',
+        text: labelForTool(name),
+        createdAt,
+      });
+    }
+  }
+
+  return blobs;
 }
 
 function isStakeholderText(
@@ -421,4 +479,27 @@ export function lastAgentMessage(entries: ActivityEntry[]): string | null {
     if (entries[i].kind === 'say') return entries[i].text;
   }
   return null;
+}
+
+/**
+ * If the timeline never produced a stakeholder-facing message, use the
+ * run's stored result so a finished answer is not invisible in chat.
+ */
+export function withClosingResult(
+  entries: ActivityEntry[],
+  result: string | null | undefined,
+  createdAt: string,
+): ActivityEntry[] {
+  if (!result?.trim()) return entries;
+  if (entries.some((entry) => entry.kind === 'say')) return entries;
+  return [
+    ...entries,
+    {
+      id: 'run-result',
+      kind: 'say',
+      text: result,
+      createdAt,
+      thoughts: [],
+    },
+  ];
 }

@@ -14,7 +14,7 @@ import {
   uploadDataset,
 } from './api';
 import { useRun } from './hooks/useRun';
-import { toActivity, lastAgentMessage } from './utils/runEvents';
+import { toActivity, lastAgentMessage, withClosingResult } from './utils/runEvents';
 import type { DataAttachment, SessionSummary, WorkspaceView } from './types/risksense';
 
 /** A run's title, derived from its question so the sidebar reads sensibly. */
@@ -127,14 +127,18 @@ export default function App() {
     }
   }, [awaitingRunId, run, activeRunId]);
 
-  const activity = useMemo(
-    () =>
-      toActivity(events, {
-        openingQuestion: run?.businessQuestion,
-        stillWorking: working,
-      }),
-    [events, run?.businessQuestion, working],
-  );
+  const activity = useMemo(() => {
+    const entries = toActivity(events, {
+      openingQuestion: run?.businessQuestion,
+      stillWorking: working,
+    });
+    if (working) return entries;
+    return withClosingResult(
+      entries,
+      run?.result,
+      run?.completedAt ?? run?.updatedAt ?? new Date().toISOString(),
+    );
+  }, [events, run, working]);
   const headline = useMemo(
     () => run?.result ?? lastAgentMessage(activity),
     [run, activity],

@@ -10,7 +10,7 @@ interface Props {
 /** What each published file is for, in the stakeholder's terms. */
 const DESCRIPTIONS: Record<string, string> = {
   'report.md': 'The recommendation. Read this first.',
-  'walkthrough.md': 'How the answer was reached, in plain language.',
+  'walkthrough.md': 'How the question became a search, in plain language.',
   'decision.csv': 'What to do, one row per choice.',
   'constraints.csv': 'Every rule, with what it allowed and what was used.',
   'summary.json': 'The headline figures and the assumption ledger.',
