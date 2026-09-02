@@ -21,10 +21,10 @@ function formatSessionTime(isoDate: string): string {
 }
 
 const STATUS_DOT: Record<SessionSummary['status'], string> = {
-  pending: 'busy',
-  running: 'busy',
+  pending: 'running',
+  running: 'running',
   awaiting_input: 'offline',
-  finished: '',
+  finished: 'done',
   error: 'error',
   cancelled: 'offline',
 };

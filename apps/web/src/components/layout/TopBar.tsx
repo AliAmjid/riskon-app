@@ -1,11 +1,11 @@
 import type { WorkspaceView } from '../../types/risksense';
-import { StatusPill } from './StatusPill';
+import { StatusPill, type PinStatus } from './StatusPill';
 
 interface Props {
   activeView: WorkspaceView;
   onViewChange: (view: WorkspaceView) => void;
   resultsReady: boolean;
-  agentStatus?: 'ready' | 'busy' | 'offline';
+  agentStatus?: PinStatus;
   agentStatusLabel?: string;
 }
 

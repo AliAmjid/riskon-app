@@ -1,6 +1,7 @@
 :root {
   --red: #e60000;
   --red-hover: #8a000a;
+  --green: #2d8a45;
   --ink: #1c1c1c;
   --muted: #5a5d5c;
   --quiet: #777a7a;
@@ -138,18 +139,24 @@ button {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #2d8a45;
+  background: var(--green);
   box-shadow: 0 0 0 3px rgba(45, 138, 69, 0.12);
 }
 
 .status-dot.busy {
-  background: #c98a00;
-  box-shadow: 0 0 0 3px rgba(201, 138, 0, 0.12);
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(45, 138, 69, 0.12);
+  animation: pin-blink 1s ease-in-out infinite;
 }
 
 .status-dot.offline {
   background: #b8b8b8;
   box-shadow: 0 0 0 3px rgba(184, 184, 184, 0.12);
+}
+
+.status-dot.error {
+  background: var(--red);
+  box-shadow: 0 0 0 3px rgba(230, 0, 0, 0.12);
 }
 
 .view {
@@ -275,11 +282,13 @@ button {
   height: 8px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: #2d8a45;
+  background: var(--green);
 }
 
+.session-dot.running,
 .session-dot.busy {
-  background: #c98a00;
+  background: var(--green);
+  animation: pin-blink 1s ease-in-out infinite;
 }
 
 .session-dot.offline {
@@ -288,6 +297,25 @@ button {
 
 .session-dot.error {
   background: var(--red);
+}
+
+@keyframes pin-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot.busy,
+  .session-dot.running,
+  .session-dot.busy {
+    animation: none;
+    opacity: 0.55;
+  }
 }
 
 .session-copy {

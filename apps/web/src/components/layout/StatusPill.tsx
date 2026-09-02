@@ -1,14 +1,15 @@
-type AgentStatus = 'ready' | 'busy' | 'offline';
+export type PinStatus = 'ready' | 'busy' | 'offline' | 'error';
 
 interface Props {
-  status?: AgentStatus;
+  status?: PinStatus;
   label?: string;
 }
 
-const labels: Record<AgentStatus, string> = {
-  ready: 'Agent ready',
-  busy: 'Agent working',
-  offline: 'Agent offline',
+const labels: Record<PinStatus, string> = {
+  ready: 'Completed',
+  busy: 'Running',
+  offline: 'Waiting',
+  error: 'Failed',
 };
 
 export function StatusPill({ status = 'ready', label }: Props) {
@@ -20,7 +21,7 @@ export function StatusPill({ status = 'ready', label }: Props) {
       aria-label={title}
     >
       <span
-        className={`status-dot ${status === 'busy' ? 'busy' : ''} ${status === 'offline' ? 'offline' : ''}`}
+        className={`status-dot ${status === 'ready' ? '' : status}`}
       />
     </div>
   );

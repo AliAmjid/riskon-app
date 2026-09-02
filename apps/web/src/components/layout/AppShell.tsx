@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { SessionSummary, WorkspaceView } from '../../types/risksense';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
+import type { PinStatus } from './StatusPill';
 
 interface Props {
   activeView: WorkspaceView;
@@ -11,7 +12,7 @@ interface Props {
   activeSessionId: string;
   onSelectSession: (sessionId: string) => void;
   onNewSession: () => void;
-  agentStatus?: 'ready' | 'busy' | 'offline';
+  agentStatus?: PinStatus;
   agentStatusLabel?: string;
   chatView: ReactNode;
   resultsView: ReactNode;

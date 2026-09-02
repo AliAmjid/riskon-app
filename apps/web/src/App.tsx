@@ -294,8 +294,18 @@ export default function App() {
     }
   }, [activeView, resultsReady]);
 
-  const agentStatus =
-    pendingQuestion !== null ? 'offline' : working ? 'busy' : 'ready';
+  const pin =
+    run?.status === 'error'
+      ? { status: 'error' as const, label: 'Failed' }
+      : working
+        ? { status: 'busy' as const, label: 'Running' }
+        : pendingQuestion !== null || run?.status === 'awaiting_input'
+          ? { status: 'offline' as const, label: 'Waiting on you' }
+          : run?.status === 'cancelled'
+            ? { status: 'offline' as const, label: 'Cancelled' }
+            : run?.status === 'finished'
+              ? { status: 'ready' as const, label: 'Completed' }
+              : { status: 'ready' as const, label: 'Ready' };
 
   return (
     <AppShell
@@ -306,10 +316,8 @@ export default function App() {
       activeSessionId={activeRunId ?? ''}
       onSelectSession={handleSelectSession}
       onNewSession={handleNewSession}
-      agentStatus={agentStatus}
-      agentStatusLabel={
-        pendingQuestion !== null ? 'Waiting on you' : undefined
-      }
+      agentStatus={pin.status}
+      agentStatusLabel={pin.label}
       chatView={
         <InputView
           attachments={attachments}
