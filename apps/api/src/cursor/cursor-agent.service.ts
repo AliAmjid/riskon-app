@@ -101,7 +101,8 @@ export class CursorAgentService {
       '',
       `    cd /workspace && git fetch --quiet origin ${ref} && git reset --hard --quiet FETCH_HEAD`,
       '',
-      'Then read AGENTS.md and follow it exactly, all nine steps, in order.',
+      'Then read AGENTS.md and follow it exactly, all five steps, in order.',
+      'Do not run riskon doctor or riskon solvers. After load, at most two SQL queries.',
       '',
       `Business question: ${options.businessQuestion}`,
     ];
