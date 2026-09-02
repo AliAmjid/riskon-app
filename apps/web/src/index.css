@@ -869,11 +869,7 @@ tr:last-child td {
   gap: 7px;
 }
 
-.thoughts-live {
-  color: var(--quiet);
-}
-
-.thoughts-live .spinner {
+.thoughts summary .spinner {
   width: 11px;
   height: 11px;
 }

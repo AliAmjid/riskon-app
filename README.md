@@ -1,6 +1,6 @@
 # Riskon App
 
-Monorepo that triggers [riskon-agent](https://github.com/AliAmjid/riskon-agent) optimization runs through the [Cursor SDK](https://cursor.com/docs/sdk/typescript).
+Monorepo that triggers [riskon](https://github.com/AliAmjid/riskon) optimization runs through the [Cursor SDK](https://cursor.com/docs/sdk/typescript).
 
 ```
 riskon-app/

@@ -31,7 +31,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-riskon}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-riskon}
       CURSOR_API_KEY: ${CURSOR_API_KEY}
       CURSOR_MODEL: ${CURSOR_MODEL:-composer-2.5}
-      AGENT_REPOSITORY_URL: ${AGENT_REPOSITORY_URL:-https://github.com/AliAmjid/cursor-agent}
+      AGENT_REPOSITORY_URL: ${AGENT_REPOSITORY_URL:-https://github.com/AliAmjid/riskon}
       AGENT_REPOSITORY_REF: ${AGENT_REPOSITORY_REF:-main}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
       STORAGE_ROOT: /app/storage

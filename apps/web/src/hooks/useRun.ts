@@ -117,17 +117,22 @@ export function useRun(runId: string | null): RunState {
     });
 
     socket.on('run:updated', (patch: RunUpdatedMessage) => {
-      setRun((current) =>
-        current && current.id === patch.runId
-          ? {
-              ...current,
-              status: patch.status ?? current.status,
-              result: patch.result ?? current.result,
-              errorMessage: patch.errorMessage ?? current.errorMessage,
-              artifactCount: patch.artifactCount ?? current.artifactCount,
-            }
-          : current,
-      );
+      setRun((current) => {
+        if (!current || current.id !== patch.runId) return current;
+        // A field the patch carries as null is being cleared, which is how a
+        // successful follow-up drops the earlier attempt's error. Only an
+        // absent field means "unchanged".
+        return {
+          ...current,
+          status: patch.status ?? current.status,
+          result: 'result' in patch ? (patch.result ?? null) : current.result,
+          errorMessage:
+            'errorMessage' in patch
+              ? (patch.errorMessage ?? null)
+              : current.errorMessage,
+          artifactCount: patch.artifactCount ?? current.artifactCount,
+        };
+      });
     });
 
     const upsertQuestion = (round: RunQuestionRequest): void => {

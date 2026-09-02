@@ -5,6 +5,7 @@ import {
   type AgentOptions,
   type ConversationTurn,
   type Run,
+  type RunResult,
   type SDKAgent,
   type SDKArtifact,
   type SDKMessage,
@@ -59,6 +60,26 @@ export interface TriggerRunResult {
 
 /** Cursor collects whatever the agent writes under this directory. */
 const ARTIFACT_PREFIX = 'artifacts/';
+
+/**
+ * Cursor retains a run's event stream for a window rather than for the run's
+ * whole life, so a slow run can outlive it. When that happens `wait()` reports
+ * failure — but the agent is still working, so the report is about the stream
+ * and not about the run.
+ */
+const LOST_STREAM = /stream is no longer available|stream (?:closed|expired|ended|unavailable)/i;
+
+/** How far a turn has been mirrored into the timeline, across both routes. */
+interface TurnProgress {
+  /** Events the live stream delivered. Zero means the transcript is our only copy. */
+  streamed: number;
+  /** Conversation turns already written, so a re-read does not duplicate them. */
+  backfilled: number;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 @Injectable()
 export class CursorAgentService {
@@ -226,13 +247,13 @@ export class CursorAgentService {
       cursorRunId: run.id,
     });
 
-    const waiting = run.wait();
-    const streamed = this.streamEvents(run, options);
-    const result = await waiting;
-    const eventCount = await streamed;
+    const progress: TurnProgress = { streamed: 0, backfilled: 0 };
+    const streamed = this.streamEvents(run, options, progress);
+    const result = await this.settle(run, agent.agentId, options, progress);
+    await streamed;
 
-    if (eventCount === 0) {
-      await this.backfillTimeline(run, options);
+    if (progress.streamed === 0) {
+      await this.backfillTimeline(run, options, progress);
     }
 
     const artifactCount = await this.collectArtifacts(agent, options);
@@ -263,48 +284,165 @@ export class CursorAgentService {
   private async streamEvents(
     run: Run,
     options: TriggerRunOptions | ContinueRunOptions,
-  ): Promise<number> {
+    progress: TurnProgress,
+  ): Promise<void> {
     if (!run.supports('stream')) {
       this.logger.warn(
         `Run ${options.runId} cannot stream: ${run.unsupportedReason('stream')}`,
       );
-      return 0;
+      return;
     }
 
-    let count = 0;
     try {
       for await (const event of run.stream()) {
-        count += 1;
+        progress.streamed += 1;
         await options.onEvent(event);
       }
     } catch (error) {
       this.logger.warn(
-        `Run ${options.runId} stream ended early after ${count} event(s): ${String(error)}`,
+        `Run ${options.runId} stream ended early after ${progress.streamed} event(s): ${String(error)}`,
       );
     }
-    return count;
   }
 
   /**
-   * Rebuild the timeline from the finished transcript.
+   * The run's real outcome, which is not always what `wait()` says.
+   *
+   * `wait()` watches the event stream, so when the stream expires it reports a
+   * failure for a run that is still going. Believing it strands a live agent:
+   * the stakeholder is shown an error, the run stops being followed, and the
+   * answer the agent goes on to publish never arrives. So a stream-shaped
+   * failure is treated as a lost connection and the API is asked directly.
+   */
+  private async settle(
+    run: Run,
+    agentId: string,
+    options: TriggerRunOptions | ContinueRunOptions,
+    progress: TurnProgress,
+  ): Promise<RunResult> {
+    let reported: RunResult | null = null;
+
+    try {
+      reported = await run.wait();
+      if (!LOST_STREAM.test(reported.error?.message ?? '')) {
+        return reported;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!LOST_STREAM.test(message)) throw error;
+    }
+
+    this.logger.warn(
+      `Run ${options.runId} lost the event stream for ${run.id}; asking the API for its real outcome`,
+    );
+
+    const confirmed =
+      options.runtime === 'cloud'
+        ? await this.pollUntilSettled(run, agentId, options, progress)
+        : null;
+
+    return (
+      confirmed ??
+      reported ?? {
+        id: run.id,
+        status: 'error',
+        error: {
+          message:
+            'the event stream ended and the run could not be reached to confirm how it went',
+        },
+      }
+    );
+  }
+
+  /**
+   * Ask Cursor what a run is doing until it is no longer running.
+   *
+   * A fresh handle per poll is deliberate: the stale one is the thing whose
+   * stream just died.
+   */
+  private async pollUntilSettled(
+    run: Run,
+    agentId: string,
+    options: TriggerRunOptions | ContinueRunOptions,
+    progress: TurnProgress,
+  ): Promise<RunResult | null> {
+    const deadline = Date.now() + this.config.runPollTimeoutSeconds * 1000;
+
+    while (Date.now() < deadline) {
+      await delay(this.config.runPollSeconds * 1000);
+
+      let fresh: Run;
+      try {
+        fresh = await Agent.getRun(run.id, {
+          runtime: 'cloud',
+          agentId,
+          apiKey: this.config.cursorApiKey,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Run ${options.runId} could not be polled: ${String(error)}`,
+        );
+        continue;
+      }
+
+      // With no stream, the transcript is the only thing the stakeholder can
+      // watch, so it is pulled as the run goes rather than only at the end.
+      if (progress.streamed === 0) {
+        await this.backfillTimeline(fresh, options, progress);
+      }
+
+      if (fresh.status !== 'running') {
+        this.logger.log(
+          `Run ${options.runId} really ended as ${fresh.status} after its stream was lost`,
+        );
+        return {
+          id: fresh.id,
+          status: fresh.status,
+          result: fresh.result,
+          error: fresh.error,
+          model: fresh.model,
+          durationMs: fresh.durationMs,
+          git: fresh.git,
+          usage: fresh.usage,
+        };
+      }
+    }
+
+    this.logger.warn(
+      `Run ${options.runId} was still running when polling gave up after ` +
+        `${this.config.runPollTimeoutSeconds}s`,
+    );
+    return null;
+  }
+
+  /**
+   * Mirror the durable transcript into the timeline.
    *
    * Cloud streams are only retained for a window after the run starts, so a
    * long run can outlive its own stream. `conversation()` is the durable copy.
+   * Only turns that can no longer grow are written, because a turn read while
+   * the run is mid-way through it would be written again, longer, next time.
    */
   private async backfillTimeline(
     run: Run,
     options: TriggerRunOptions | ContinueRunOptions,
+    progress: TurnProgress,
   ): Promise<void> {
     if (!run.supports('conversation')) return;
 
     try {
       const turns = await run.conversation();
-      for (const turn of turns) {
+      const complete =
+        run.status === 'running' ? Math.max(turns.length - 1, 0) : turns.length;
+      if (complete <= progress.backfilled) return;
+
+      for (const turn of turns.slice(progress.backfilled, complete)) {
         await options.onTranscriptTurn(turn);
       }
       this.logger.log(
-        `Run ${options.runId} timeline backfilled from ${turns.length} turn(s)`,
+        `Run ${options.runId} timeline backfilled to ${complete} turn(s)`,
       );
+      progress.backfilled = complete;
     } catch (error) {
       this.logger.warn(
         `Run ${options.runId} could not backfill its timeline: ${String(error)}`,

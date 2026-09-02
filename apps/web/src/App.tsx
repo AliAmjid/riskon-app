@@ -42,6 +42,12 @@ export default function App() {
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [uploading, setUploading] = useState(false);
   const [starting, setStarting] = useState(false);
+  /**
+   * A run we have created but not yet read back. Without this the feed falls
+   * back to its empty state for the length of one fetch, so pressing send
+   * flashes "upload a file to get started" instead of showing work starting.
+   */
+  const [awaitingRunId, setAwaitingRunId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const {
@@ -109,7 +115,17 @@ export default function App() {
   }, [run]);
 
   const working =
-    starting || run?.status === 'pending' || run?.status === 'running';
+    starting ||
+    awaitingRunId !== null ||
+    run?.status === 'pending' ||
+    run?.status === 'running';
+
+  useEffect(() => {
+    if (!awaitingRunId) return;
+    if (run?.id === awaitingRunId || activeRunId !== awaitingRunId) {
+      setAwaitingRunId(null);
+    }
+  }, [awaitingRunId, run, activeRunId]);
 
   const activity = useMemo(
     () =>
@@ -225,6 +241,7 @@ export default function App() {
           runtime: 'cloud',
         });
         setRuns((current) => [created, ...current]);
+        setAwaitingRunId(created.id);
         setActiveRunId(created.id);
       } catch (cause) {
         setError(
@@ -297,11 +314,10 @@ export default function App() {
           working={working}
           uploading={uploading}
           runLocked={activeRunId !== null}
-          continueMode={
-            activeRunId != null &&
-            !!run?.cursorAgentId &&
-            (run.status === 'finished' || run.status === 'error')
-          }
+          // A session that can be continued stays in follow-up mode while the
+          // agent works, so the composer does not read like a fresh start
+          // between sending a follow-up and getting the answer.
+          continueMode={activeRunId != null && !!run?.cursorAgentId}
           error={error ?? runError}
           onFilesSelected={(files) => void handleFilesSelected(files)}
           onRemoveAttachment={handleRemoveAttachment}

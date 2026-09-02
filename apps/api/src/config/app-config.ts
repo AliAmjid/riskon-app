@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { resolve } from 'node:path';
 
-const DEFAULT_AGENT_REPOSITORY = 'https://github.com/AliAmjid/cursor-agent';
+const DEFAULT_AGENT_REPOSITORY = 'https://github.com/AliAmjid/riskon';
 
 /**
  * Every environment lookup in one place, so a missing variable fails at
@@ -84,6 +84,20 @@ export class AppConfig {
   /** How long a question round stays open before it becomes a `timeout`. */
   get questionTimeoutSeconds(): number {
     return Number(this.config.get<string>('QUESTION_TIMEOUT_SECONDS', '1800'));
+  }
+
+  /**
+   * How often we ask Cursor what a run is doing once its event stream has been
+   * lost, and how long we keep asking. The timeout only has to outlast a real
+   * run: giving up early is the failure that matters, because it abandons an
+   * agent that is still working.
+   */
+  get runPollSeconds(): number {
+    return Number(this.config.get<string>('RUN_POLL_SECONDS', '10'));
+  }
+
+  get runPollTimeoutSeconds(): number {
+    return Number(this.config.get<string>('RUN_POLL_TIMEOUT_SECONDS', '5400'));
   }
 
   get maxUploadBytes(): number {

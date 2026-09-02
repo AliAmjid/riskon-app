@@ -84,8 +84,10 @@ function Thoughts({
         setOpen((event.currentTarget as HTMLDetailsElement).open);
       }}
     >
+      {/* The spinner sits in the summary rather than at the end of the list so
+          it stays visible whether the notes are expanded or collapsed. */}
       <summary>
-        {live && !open ? (
+        {live ? (
           <span className="processing">
             <span className="spinner" />
             <span>Working…</span>
@@ -100,14 +102,6 @@ function Thoughts({
         {thoughts.map((thought) => (
           <li key={thought.id}>{thought.text}</li>
         ))}
-        {live && (
-          <li className="thoughts-live">
-            <span className="processing">
-              <span className="spinner" />
-              <span>Working…</span>
-            </span>
-          </li>
-        )}
       </ul>
     </details>
   );
@@ -130,6 +124,14 @@ export function ActivityFeed({
   }, [entries, working]);
 
   const lastTurnIndex = turns.length - 1;
+  const lastTurn = turns[lastTurnIndex];
+
+  // The working notes carry the spinner while they are the newest thing on
+  // screen. Once the agent has said something they are not, so the spinner
+  // moves below the message — otherwise a run that reports progress part way
+  // through looks finished for as long as it keeps working.
+  const trailingStatus =
+    working && (lastTurn == null || lastTurn.messages.length > 0);
 
   return (
     <div className="messages" ref={scrollRef} aria-live="polite">
@@ -140,7 +142,7 @@ export function ActivityFeed({
 
       {turns.map((turn, index) => {
         const isLast = index === lastTurnIndex;
-        const thoughtsOpen = working && isLast && turn.messages.length === 0;
+        const liveThoughts = working && isLast && turn.messages.length === 0;
 
         return (
           <div key={turn.id} className="turn">
@@ -157,8 +159,8 @@ export function ActivityFeed({
 
             <Thoughts
               thoughts={turn.thoughts}
-              defaultOpen={thoughtsOpen}
-              live={working && isLast && turn.messages.length === 0}
+              defaultOpen={liveThoughts}
+              live={liveThoughts}
             />
 
             {turn.messages.map((entry) => (
@@ -188,22 +190,19 @@ export function ActivityFeed({
         );
       })}
 
-      {working &&
-        turns[lastTurnIndex]?.messages.length === 0 &&
-        (turns[lastTurnIndex]?.thoughts.length ?? 0) === 0 &&
-        !turns[lastTurnIndex]?.user && (
-          <div className="message-row agent">
-            <div className="agent-mark">AI</div>
-            <div>
-              <div className="bubble bubble-status">
-                <span className="processing">
-                  <span className="spinner" />
-                  <span>Working…</span>
-                </span>
-              </div>
+      {trailingStatus && (
+        <div className="message-row agent">
+          <div className="agent-mark">AI</div>
+          <div>
+            <div className="bubble bubble-status">
+              <span className="processing">
+                <span className="spinner" />
+                <span>Working…</span>
+              </span>
             </div>
           </div>
-        )}
+        </div>
+      )}
     </div>
   );
 }
