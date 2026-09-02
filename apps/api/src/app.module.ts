@@ -27,7 +27,9 @@ const ENTITIES = [AgentRun, RunEvent, RunArtifact, RunQuestionRound, Dataset];
         type: 'postgres',
         url: config.getOrThrow<string>('DATABASE_URL'),
         entities: ENTITIES,
-        synchronize: config.get<string>('NODE_ENV') !== 'production',
+        synchronize:
+          config.get<string>('TYPEORM_SYNCHRONIZE') === 'true' ||
+          config.get<string>('NODE_ENV') !== 'production',
         logging: config.get<string>('DB_LOGGING') === 'true',
       }),
     }),

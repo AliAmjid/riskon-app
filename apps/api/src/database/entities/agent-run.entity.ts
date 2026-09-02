@@ -30,6 +30,10 @@ export class AgentRun {
   @Column({ type: 'uuid', nullable: true })
   datasetId!: string | null;
 
+  /** All uploaded files for this run, in the order the stakeholder attached them. */
+  @Column({ type: 'simple-json', nullable: true })
+  datasetIds!: string[] | null;
+
   @Column({ type: 'varchar', length: 64, nullable: true })
   template!: string | null;
 

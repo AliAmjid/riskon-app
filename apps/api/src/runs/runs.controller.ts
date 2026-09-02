@@ -18,6 +18,7 @@ import { RunsService } from './runs.service.js';
 import { RunArtifactsService } from './run-artifacts.service.js';
 import { RunQuestionsService } from '../questions/run-questions.service.js';
 import { CreateRunDto } from './dto/create-run.dto.js';
+import { ContinueRunDto } from './dto/continue-run.dto.js';
 import { AnswerQuestionsDto } from './dto/answer-questions.dto.js';
 
 @Controller('runs')
@@ -31,6 +32,14 @@ export class RunsController {
   @Post()
   create(@Body() dto: CreateRunDto): Promise<AgentRunSummary> {
     return this.runs.create(dto);
+  }
+
+  @Post(':id/continue')
+  continue(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ContinueRunDto,
+  ): Promise<AgentRunSummary> {
+    return this.runs.continue(id, dto.message);
   }
 
   @Get()

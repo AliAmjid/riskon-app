@@ -12,10 +12,16 @@ const labels: Record<AgentStatus, string> = {
 };
 
 export function StatusPill({ status = 'ready', label }: Props) {
+  const title = label ?? labels[status];
   return (
-    <div className="status-pill">
-      <span className={`status-dot ${status === 'busy' ? 'busy' : ''} ${status === 'offline' ? 'offline' : ''}`} />
-      <span>{label ?? labels[status]}</span>
+    <div
+      className="status-pill"
+      title={title}
+      aria-label={title}
+    >
+      <span
+        className={`status-dot ${status === 'busy' ? 'busy' : ''} ${status === 'offline' ? 'offline' : ''}`}
+      />
     </div>
   );
 }

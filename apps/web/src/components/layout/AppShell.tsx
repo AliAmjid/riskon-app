@@ -6,26 +6,28 @@ import { TopBar } from './TopBar';
 interface Props {
   activeView: WorkspaceView;
   onViewChange: (view: WorkspaceView) => void;
+  resultsReady: boolean;
   sessions: SessionSummary[];
   activeSessionId: string;
   onSelectSession: (sessionId: string) => void;
   onNewSession: () => void;
   agentStatus?: 'ready' | 'busy' | 'offline';
   agentStatusLabel?: string;
-  inputView: ReactNode;
+  chatView: ReactNode;
   resultsView: ReactNode;
 }
 
 export function AppShell({
   activeView,
   onViewChange,
+  resultsReady,
   sessions,
   activeSessionId,
   onSelectSession,
   onNewSession,
   agentStatus,
   agentStatusLabel,
-  inputView,
+  chatView,
   resultsView,
 }: Props) {
   return (
@@ -33,23 +35,24 @@ export function AppShell({
       <TopBar
         activeView={activeView}
         onViewChange={onViewChange}
+        resultsReady={resultsReady}
         agentStatus={agentStatus}
         agentStatusLabel={agentStatusLabel}
       />
 
       <section
-        className={`view ${activeView === 'input' ? 'active' : ''}`}
-        id="input-view"
-        aria-hidden={activeView !== 'input'}
+        className={`view ${activeView === 'chat' ? 'active' : ''}`}
+        id="chat-view"
+        aria-hidden={activeView !== 'chat'}
       >
-        <div className="input-shell">
+        <div className="chat-shell">
           <Sidebar
             sessions={sessions}
             activeSessionId={activeSessionId}
             onSelectSession={onSelectSession}
             onNewSession={onNewSession}
           />
-          {inputView}
+          {chatView}
         </div>
       </section>
 

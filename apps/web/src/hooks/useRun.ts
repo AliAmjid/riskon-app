@@ -34,6 +34,7 @@ export interface RunState {
   error: string | null;
   answer: (requestId: string, body: AnswerQuestionsRequest) => Promise<void>;
   refresh: () => Promise<void>;
+  applyRun: (next: AgentRunSummary) => void;
 }
 
 /**
@@ -176,6 +177,11 @@ export function useRun(runId: string | null): RunState {
     if (runId) await load(runId);
   }, [runId, load]);
 
+  const applyRun = useCallback((next: AgentRunSummary) => {
+    if (activeRunId.current !== next.id) return;
+    setRun(next);
+  }, []);
+
   const pendingQuestion = useMemo(
     () => questions.find((round) => round.status === 'pending') ?? null,
     [questions],
@@ -192,5 +198,6 @@ export function useRun(runId: string | null): RunState {
     error,
     answer,
     refresh,
+    applyRun,
   };
 }

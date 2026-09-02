@@ -272,18 +272,34 @@ export class RiskonMcpServerFactory {
       }
 
       case 'get_run_context': {
-        const dataset = run.datasetId
-          ? await this.datasets.findOne(run.datasetId).catch(() => null)
-          : null;
+        const ids = run.datasetIds?.length
+          ? run.datasetIds
+          : run.datasetId
+            ? [run.datasetId]
+            : [];
+        const attached = await Promise.all(
+          ids.map((id) => this.datasets.findOne(id).catch(() => null)),
+        );
+        const dataFiles = attached
+          .filter((row): row is NonNullable<typeof row> => row != null)
+          .map((dataset) => ({
+            filename: dataset.filename,
+            url: this.datasets.downloadUrl(dataset.id),
+            approx_rows: dataset.rowCountEstimate,
+          }));
+        const first = dataFiles[0];
         return json({
           title: run.title,
           business_question: run.businessQuestion,
-          data_url: run.dataSource,
-          data_filename: dataset?.filename ?? null,
-          approx_rows: dataset?.rowCountEstimate ?? null,
+          data_url: first?.url ?? run.dataSource,
+          data_filename: first?.filename ?? null,
+          data_files: dataFiles,
+          approx_rows: first?.approx_rows ?? null,
           preferred_template: run.template,
-          load_hint: run.dataSource
-            ? `riskon load "${run.dataSource}"`
+          load_hint: dataFiles.length
+            ? dataFiles
+                .map((file) => `riskon load "${file.url}"`)
+                .join('\n')
             : 'No data was attached. Ask the stakeholder which dataset to use.',
         });
       }

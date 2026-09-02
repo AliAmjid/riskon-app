@@ -4,7 +4,8 @@ export { StatusPill } from './layout/StatusPill';
 export { TopBar } from './layout/TopBar';
 
 export { ActivityFeed } from './input/ActivityFeed';
-export { DataPreviewCard } from './input/DataPreviewCard';
+export { DataPreviewModal } from './input/DataPreviewModal';
+export { DatasetChip } from './input/DatasetChip';
 export { InputView } from './input/InputView';
 export { QuestionCard } from './input/QuestionCard';
 export { UploadCard } from './input/UploadCard';

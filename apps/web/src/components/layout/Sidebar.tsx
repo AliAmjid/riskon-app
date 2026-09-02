@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { SessionSummary } from '../../types/risksense';
 
 interface Props {
@@ -16,17 +17,37 @@ function formatSessionTime(isoDate: string): string {
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffHours < 48) return 'Yesterday';
   if (diffHours < 24 * 7) return `${Math.floor(diffHours / 24)}d ago`;
-  return 'Last week';
+  return date.toLocaleDateString();
 }
 
-export function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession }: Props) {
+const STATUS_DOT: Record<SessionSummary['status'], string> = {
+  pending: 'busy',
+  running: 'busy',
+  awaiting_input: 'offline',
+  finished: '',
+  error: 'error',
+  cancelled: 'offline',
+};
+
+export function Sidebar({
+  sessions,
+  activeSessionId,
+  onSelectSession,
+  onNewSession,
+}: Props) {
+  const [pinned, setPinned] = useState(false);
+
   return (
-    <aside className="sidebar" aria-label="Recent sessions">
+    <aside
+      className={`sidebar ${pinned ? 'expanded' : ''}`}
+      aria-label="All runs"
+    >
       <button className="new-session" type="button" onClick={onNewSession}>
-        + New Session
+        <span aria-hidden="true">+</span>
+        <span className="new-session-label">New session</span>
       </button>
 
-      <div className="sidebar-label">Recent sessions</div>
+      <div className="sidebar-label">All runs</div>
 
       <ul className="session-list">
         {sessions.map((session) => (
@@ -35,18 +56,31 @@ export function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSessi
               className={`session ${session.id === activeSessionId ? 'active' : ''}`}
               type="button"
               onClick={() => onSelectSession(session.id)}
+              title={session.title}
             >
-              <span className="session-title">{session.title}</span>
-              <span className="session-time">{formatSessionTime(session.updatedAt)}</span>
+              <span
+                className={`session-dot ${STATUS_DOT[session.status]}`}
+                aria-hidden="true"
+              />
+              <span className="session-copy">
+                <span className="session-title">{session.title}</span>
+                <span className="session-time">
+                  {formatSessionTime(session.updatedAt)}
+                </span>
+              </span>
             </button>
           </li>
         ))}
       </ul>
 
-      <div className="sidebar-footer">
-        <span>Help &amp; Documentation</span>
-        <span>Settings</span>
-      </div>
+      <button
+        className="sidebar-pin"
+        type="button"
+        aria-pressed={pinned}
+        onClick={() => setPinned((current) => !current)}
+      >
+        {pinned ? 'Keep closed' : 'Keep open'}
+      </button>
     </aside>
   );
 }

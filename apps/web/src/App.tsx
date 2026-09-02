@@ -5,18 +5,17 @@ import type {
   DatasetSummary,
 } from '@riskon/shared';
 import { AppShell, InputView, ResultsView } from './components';
-import { createRun, listRuns, uploadDataset } from './api';
+import {
+  createRun,
+  continueRun,
+  datasetRawHref,
+  getDataset,
+  listRuns,
+  uploadDataset,
+} from './api';
 import { useRun } from './hooks/useRun';
 import { toActivity, lastAgentMessage } from './utils/runEvents';
-import { parseCSV } from './utils/csv';
-import type { DataPreview, SessionSummary, WorkspaceView } from './types/risksense';
-
-const EMPTY_PREVIEW: DataPreview = {
-  rowCount: 0,
-  columnCount: 0,
-  headers: [],
-  rows: [],
-};
+import type { DataAttachment, SessionSummary, WorkspaceView } from './types/risksense';
 
 /** A run's title, derived from its question so the sidebar reads sensibly. */
 function titleFor(question: string): string {
@@ -25,13 +24,22 @@ function titleFor(question: string): string {
   return title.length > 70 ? `${title.slice(0, 67)}…` : title;
 }
 
+function idsFor(run: AgentRunSummary): string[] {
+  if (run.datasetIds?.length) return run.datasetIds;
+  return run.datasetId ? [run.datasetId] : [];
+}
+
+interface Upload {
+  dataset: DatasetSummary;
+  file?: File;
+}
+
 export default function App() {
-  const [activeView, setActiveView] = useState<WorkspaceView>('input');
+  const [activeView, setActiveView] = useState<WorkspaceView>('chat');
   const [runs, setRuns] = useState<AgentRunSummary[]>([]);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
-  const [dataset, setDataset] = useState<DatasetSummary | null>(null);
-  const [preview, setPreview] = useState<DataPreview>(EMPTY_PREVIEW);
+  const [uploads, setUploads] = useState<Upload[]>([]);
   const [uploading, setUploading] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +51,7 @@ export default function App() {
     pendingQuestion,
     answer,
     error: runError,
+    applyRun,
   } = useRun(activeRunId);
 
   const refreshRuns = useCallback(async () => {
@@ -61,8 +70,6 @@ export default function App() {
     void refreshRuns();
   }, [refreshRuns]);
 
-  // Keep the sidebar's copy of the active run in step with the live one, so its
-  // status and title do not go stale while a run progresses.
   useEffect(() => {
     if (!run) return;
     setRuns((current) =>
@@ -70,14 +77,56 @@ export default function App() {
     );
   }, [run]);
 
-  const activity = useMemo(() => toActivity(events), [events]);
+  // When opening an existing run, recover the files it was started with so the
+  // chat chips still open. Prefer the local File while this tab just uploaded it.
+  useEffect(() => {
+    if (!run) return;
+    const ids = idsFor(run);
+    if (ids.length === 0) {
+      setUploads([]);
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(ids.map((id) => getDataset(id)))
+      .then((rows) => {
+        if (cancelled) return;
+        setUploads((current) => {
+          const files = new Map(
+            current.map((item) => [item.dataset.id, item.file]),
+          );
+          return rows.map((dataset) => ({
+            dataset,
+            file: files.get(dataset.id),
+          }));
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setUploads([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [run]);
+
+  const working =
+    starting || run?.status === 'pending' || run?.status === 'running';
+
+  const activity = useMemo(
+    () =>
+      toActivity(events, {
+        openingQuestion: run?.businessQuestion,
+        stillWorking: working,
+      }),
+    [events, run?.businessQuestion, working],
+  );
   const headline = useMemo(
     () => run?.result ?? lastAgentMessage(activity),
     [run, activity],
   );
 
-  const working =
-    starting || run?.status === 'pending' || run?.status === 'running';
+  const resultsReady =
+    activeRunId != null &&
+    (run?.status === 'finished' || (run != null && run.artifactCount > 0));
 
   const sessions: SessionSummary[] = useMemo(
     () =>
@@ -85,37 +134,56 @@ export default function App() {
         id: item.id,
         title: item.title,
         updatedAt: item.updatedAt,
+        status: item.status,
       })),
     [runs],
   );
 
-  // -------------------------------------------------------------------------
-  // Actions
-  // -------------------------------------------------------------------------
+  const attachments: DataAttachment[] = useMemo(
+    () =>
+      uploads.map((item) => ({
+        id: item.dataset.id,
+        filename: item.dataset.filename,
+        file: item.file,
+        url: datasetRawHref(item.dataset.id),
+        rowCountEstimate: item.dataset.rowCountEstimate,
+        sizeBytes: item.file?.size ?? item.dataset.sizeBytes,
+      })),
+    [uploads],
+  );
 
-  const handleFileSelected = useCallback(async (file: File) => {
+  const handleFilesSelected = useCallback(async (files: File[]) => {
     setUploading(true);
     setError(null);
 
-    // Preview locally for immediate feedback; the upload is what the agent uses.
-    if (/\.(csv|tsv|txt)$/i.test(file.name)) {
-      try {
-        setPreview({ ...parseCSV(await file.text()), fileName: file.name });
-      } catch {
-        setPreview({ ...EMPTY_PREVIEW, fileName: file.name });
-      }
-    } else {
-      setPreview({ ...EMPTY_PREVIEW, fileName: file.name });
-    }
-
+    const next: Upload[] = [];
     try {
-      setDataset(await uploadDataset(file));
+      for (const file of files) {
+        next.push({ dataset: await uploadDataset(file), file });
+      }
+      setUploads((current) => {
+        const merged = [...current];
+        for (const item of next) {
+          const index = merged.findIndex(
+            (existing) => existing.dataset.filename === item.dataset.filename,
+          );
+          if (index >= 0) merged[index] = item;
+          else merged.push(item);
+        }
+        return merged;
+      });
     } catch (cause) {
-      setDataset(null);
+      if (next.length > 0) {
+        setUploads((current) => [...current, ...next]);
+      }
       setError(cause instanceof Error ? cause.message : 'Could not upload that file.');
     } finally {
       setUploading(false);
     }
+  }, []);
+
+  const handleRemoveAttachment = useCallback((id: string) => {
+    setUploads((current) => current.filter((item) => item.dataset.id !== id));
   }, []);
 
   const handleAskQuestion = useCallback(
@@ -123,10 +191,37 @@ export default function App() {
       setStarting(true);
       setError(null);
       try {
+        if (activeRunId) {
+          if (
+            run?.status === 'pending' ||
+            run?.status === 'running' ||
+            run?.status === 'awaiting_input'
+          ) {
+            setError(
+              'This session is still working. Wait for it to finish, or answer the question first.',
+            );
+            return;
+          }
+          if (!run?.cursorAgentId) {
+            setError(
+              'This session cannot be continued. Start a new one from the + button.',
+            );
+            return;
+          }
+          const updated = await continueRun(activeRunId, question);
+          applyRun(updated);
+          setRuns((current) =>
+            current.map((item) => (item.id === updated.id ? updated : item)),
+          );
+          return;
+        }
+
+        const datasetIds = uploads.map((item) => item.dataset.id);
         const created = await createRun({
           title: titleFor(question),
           businessQuestion: question,
-          datasetId: dataset?.id,
+          datasetId: datasetIds[0],
+          datasetIds,
           runtime: 'cloud',
         });
         setRuns((current) => [created, ...current]);
@@ -139,7 +234,7 @@ export default function App() {
         setStarting(false);
       }
     },
-    [dataset],
+    [uploads, activeRunId, run, applyRun],
   );
 
   const handleAnswerQuestion = useCallback(
@@ -152,24 +247,32 @@ export default function App() {
 
   const handleNewSession = useCallback(() => {
     setActiveRunId(null);
-    setDataset(null);
-    setPreview(EMPTY_PREVIEW);
+    setUploads([]);
     setError(null);
-    setActiveView('input');
+    setActiveView('chat');
   }, []);
 
   const handleSelectSession = useCallback((runId: string) => {
     setActiveRunId(runId);
+    setUploads([]);
     setError(null);
+    setActiveView('chat');
   }, []);
 
-  const handleViewChange = useCallback((view: WorkspaceView) => {
-    setActiveView(view);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  const handleViewChange = useCallback(
+    (view: WorkspaceView) => {
+      if (view === 'results' && !resultsReady) return;
+      setActiveView(view);
+    },
+    [resultsReady],
+  );
 
-  // A run that is waiting on an answer is not busy; it is blocked on the person
-  // reading this, and the status pill should not claim otherwise.
+  useEffect(() => {
+    if (activeView === 'results' && !resultsReady) {
+      setActiveView('chat');
+    }
+  }, [activeView, resultsReady]);
+
   const agentStatus =
     pendingQuestion !== null ? 'offline' : working ? 'busy' : 'ready';
 
@@ -177,6 +280,7 @@ export default function App() {
     <AppShell
       activeView={activeView}
       onViewChange={handleViewChange}
+      resultsReady={resultsReady}
       sessions={sessions}
       activeSessionId={activeRunId ?? ''}
       onSelectSession={handleSelectSession}
@@ -185,17 +289,22 @@ export default function App() {
       agentStatusLabel={
         pendingQuestion !== null ? 'Waiting on you' : undefined
       }
-      inputView={
+      chatView={
         <InputView
-          title={run?.title ?? 'New optimisation session'}
-          preview={preview}
+          attachments={attachments}
           activity={activity}
           pendingQuestion={pendingQuestion}
           working={working}
           uploading={uploading}
-          datasetLabel={dataset?.filename ?? null}
+          runLocked={activeRunId !== null}
+          continueMode={
+            activeRunId != null &&
+            !!run?.cursorAgentId &&
+            (run.status === 'finished' || run.status === 'error')
+          }
           error={error ?? runError}
-          onFileSelected={(file) => void handleFileSelected(file)}
+          onFilesSelected={(files) => void handleFilesSelected(files)}
+          onRemoveAttachment={handleRemoveAttachment}
           onAskQuestion={(question) => void handleAskQuestion(question)}
           onAnswerQuestion={handleAnswerQuestion}
         />

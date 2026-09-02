@@ -46,6 +46,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 // Datasets
 // ---------------------------------------------------------------------------
 
+export function getDataset(id: string): Promise<DatasetSummary> {
+  return request(`/datasets/${id}`);
+}
+
+export function datasetRawHref(id: string): string {
+  return `${API_BASE}/datasets/${id}/raw`;
+}
+
 export async function uploadDataset(file: File): Promise<DatasetSummary> {
   const form = new FormData();
   form.append('file', file);
@@ -74,6 +82,16 @@ export function getRun(id: string): Promise<AgentRunSummary> {
 
 export function createRun(body: CreateRunRequest): Promise<AgentRunSummary> {
   return request('/runs', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export function continueRun(
+  id: string,
+  message: string,
+): Promise<AgentRunSummary> {
+  return request(`/runs/${id}/continue`, {
+    method: 'POST',
+    body: JSON.stringify({ message }),
+  });
 }
 
 export function listRunEvents(id: string): Promise<RunEventPayload[]> {

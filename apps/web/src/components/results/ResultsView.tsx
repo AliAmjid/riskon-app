@@ -52,7 +52,7 @@ export function ResultsView({ run, artifacts, headline }: Props) {
         <div className="results-header">
           <div>
             <h1>No run selected</h1>
-            <p>Start one from the Input tab and the results will appear here.</p>
+            <p>Start one from Chat and the results will appear here.</p>
           </div>
         </div>
       </main>
@@ -99,7 +99,7 @@ export function ResultsView({ run, artifacts, headline }: Props) {
           <p className="model-copy">
             {waiting
               ? 'Nothing yet. Files appear here as soon as the agent publishes them.'
-              : 'The agent published nothing. The activity feed on the Input tab shows how far it got.'}
+              : 'The agent published nothing. The activity feed on Chat shows how far it got.'}
           </p>
         </section>
       ) : (

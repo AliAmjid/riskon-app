@@ -7,6 +7,9 @@
     "apps/*",
     "packages/*"
   ],
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "predev": "npm run db:up && npm run build -w @riskon/shared",
     "dev": "concurrently -n shared,api,web -c gray,magenta,cyan -k \"npm:dev:shared\" \"npm:dev:api\" \"npm:dev:web\"",
@@ -15,6 +18,7 @@
     "dev:web": "npm run dev -w web",
     "db:up": "docker compose up -d --wait postgres",
     "build": "npm run build -w @riskon/shared && npm run build -w api && npm run build -w web",
+    "build:web": "npm run build -w @riskon/shared && npm run build -w web",
     "tunnel": "node scripts/tunnel.mjs",
     "smoke": "node scripts/smoke.mjs",
     "docker:up": "docker compose up --build",

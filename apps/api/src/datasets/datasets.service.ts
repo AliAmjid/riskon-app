@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import type { ReadStream } from 'node:fs';
 import type { DatasetSummary } from '@riskon/shared';
 import { Dataset } from '../database/entities/dataset.entity.js';
@@ -72,6 +72,19 @@ export class DatasetsService {
       throw new NotFoundException(`Dataset ${id} not found`);
     }
     return dataset;
+  }
+
+  async findMany(ids: string[]): Promise<Dataset[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.datasets.findBy({ id: In(ids) });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return ids.map((id) => {
+      const row = byId.get(id);
+      if (!row) {
+        throw new NotFoundException(`Dataset ${id} not found`);
+      }
+      return row;
+    });
   }
 
   async findAll(): Promise<DatasetSummary[]> {

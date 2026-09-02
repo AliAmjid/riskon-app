@@ -83,3 +83,15 @@ WebSocket: connect to the API origin and emit `run:subscribe` with `{ runId }`. 
 ## No auth (for now)
 
 There is no login layer yet. Do not expose this stack publicly without adding authentication first.
+
+## Deploy
+
+Production is the DigitalOcean droplet. `docker-compose.prod.yml` runs Postgres, the API, the Vite UI, and nginx+certbot. Cloud agents need that always-on API; Netlify Functions cannot host it.
+
+```bash
+# On the droplet
+cd /var/www/riskon
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+`PUBLIC_BASE_URL` is the origin cloud agents use to fetch uploaded datasets and to call MCP. It must be the public HTTPS hostname, not localhost.

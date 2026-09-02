@@ -18,6 +18,7 @@ export interface TriggerRunOptions {
   businessQuestion: string;
   dataSource?: string | null;
   dataFilename?: string | null;
+  dataFiles?: { filename: string; url: string }[];
   template?: string | null;
   runtime: AgentRuntime;
   repositoryUrl?: string | null;
@@ -37,6 +38,14 @@ export interface TriggerRunOptions {
    * handle is the only way to mint them, so this is the one chance to pull them.
    */
   onArtifact: (artifact: SDKArtifact, body: Buffer) => Promise<void>;
+}
+
+export interface ContinueRunOptions extends Omit<
+  TriggerRunOptions,
+  'businessQuestion' | 'dataSource' | 'dataFilename' | 'dataFiles' | 'template'
+> {
+  cursorAgentId: string;
+  message: string;
 }
 
 export interface TriggerRunResult {
@@ -76,14 +85,32 @@ export class CursorAgentService {
       `Business question: ${options.businessQuestion}`,
     ];
 
-    if (options.dataSource) {
-      const named = options.dataFilename
-        ? ` (the stakeholder uploaded "${options.dataFilename}")`
-        : '';
+    const dataFiles =
+      options.dataFiles && options.dataFiles.length > 0
+        ? options.dataFiles
+        : options.dataSource
+          ? [
+              {
+                filename: options.dataFilename ?? 'uploaded file',
+                url: options.dataSource,
+              },
+            ]
+          : [];
+
+    if (dataFiles.length > 0) {
       lines.push(
-        `Data${named}: ${options.dataSource}`,
-        `Ingest it with: riskon load "${options.dataSource}"`,
+        dataFiles.length === 1
+          ? `Data (the stakeholder uploaded "${dataFiles[0].filename}"): ${dataFiles[0].url}`
+          : 'Data the stakeholder uploaded:',
       );
+      if (dataFiles.length === 1) {
+        lines.push(`Ingest it with: riskon load "${dataFiles[0].url}"`);
+      } else {
+        for (const file of dataFiles) {
+          lines.push(`- ${file.filename}: ${file.url}`);
+          lines.push(`  Ingest with: riskon load "${file.url}"`);
+        }
+      }
     } else {
       lines.push(
         'No data was attached. Ask the stakeholder which dataset to use before modelling;',
@@ -114,6 +141,18 @@ export class CursorAgentService {
     return lines.join('\n');
   }
 
+  buildFollowUpPrompt(message: string): string {
+    return [
+      'The stakeholder followed up. This is the same decision, not a new one.',
+      'Do not sync the workstation or start a fresh run unless they asked for a different problem.',
+      'If you need a new number from them, use ask_stakeholder and wait.',
+      'If the recommendation changes, publish the updated files with `riskon publish`.',
+      '',
+      'Their message:',
+      message,
+    ].join('\n');
+  }
+
   async trigger(options: TriggerRunOptions): Promise<TriggerRunResult> {
     const prompt = this.buildPrompt(options);
     let agent: SDKAgent | undefined;
@@ -121,56 +160,8 @@ export class CursorAgentService {
 
     try {
       agent = await Agent.create(this.agentOptions(options));
-
-      const run = await agent.send(prompt);
-      cursorRunId = run.id;
-      // Log the identifiers before streaming: if the stream hangs, these are
-      // what makes the run findable in the Cursor dashboard.
-      this.logger.log(
-        `Run ${options.runId} -> agent ${agent.agentId}, cursor run ${run.id}`,
-      );
-      await options.onAgentStarted({
-        cursorAgentId: agent.agentId,
-        cursorRunId: run.id,
-      });
-
-      // Start the wait before touching the stream, and never await the stream
-      // ahead of it. A cloud SSE stream can close early — the run keeps going —
-      // and consuming it to exhaustion first makes `wait()` fail with
-      // `stream_unavailable`, turning a healthy run into a reported error.
-      const waiting = run.wait();
-      const streamed = this.streamEvents(run, options);
-
-      const result = await waiting;
-      const eventCount = await streamed;
-
-      // The stream is best-effort, so a run that ends without it having
-      // delivered anything still needs a timeline.
-      if (eventCount === 0) {
-        await this.backfillTimeline(run, options);
-      }
-
-      const artifactCount = await this.collectArtifacts(agent, options);
-
-      return {
-        cursorAgentId: agent.agentId,
-        cursorRunId: run.id,
-        status: result.status,
-        result: result.result ?? null,
-        errorMessage:
-          result.status === 'finished'
-            ? null
-            : this.describeRunFailure(
-                result.status,
-                artifactCount,
-                result.error?.message,
-              ),
-        artifactCount,
-      };
+      return await this.executeTurn(agent, prompt, options);
     } catch (error) {
-      // A thrown CursorAgentError means the run never executed — auth, config,
-      // network. Distinct from a run that started and failed, which arrives as
-      // result.status above and may still have published something.
       if (error instanceof CursorAgentError) {
         this.logger.error(`Run ${options.runId} never started: ${error.message}`);
         return {
@@ -190,6 +181,79 @@ export class CursorAgentService {
     }
   }
 
+  async continue(options: ContinueRunOptions): Promise<TriggerRunResult> {
+    const prompt = this.buildFollowUpPrompt(options.message);
+    let agent: SDKAgent | undefined;
+    let cursorRunId: string | null = null;
+
+    try {
+      agent = await Agent.resume(options.cursorAgentId, this.resumeOptions(options));
+      return await this.executeTurn(agent, prompt, options);
+    } catch (error) {
+      if (error instanceof CursorAgentError) {
+        this.logger.error(
+          `Run ${options.runId} could not continue: ${error.message}`,
+        );
+        return {
+          cursorAgentId: options.cursorAgentId,
+          cursorRunId,
+          status: 'error',
+          result: null,
+          errorMessage: `Could not continue this session: ${error.message}`,
+          artifactCount: 0,
+        };
+      }
+      throw error;
+    } finally {
+      if (agent) {
+        await agent[Symbol.asyncDispose]();
+      }
+    }
+  }
+
+  private async executeTurn(
+    agent: SDKAgent,
+    prompt: string,
+    options: TriggerRunOptions | ContinueRunOptions,
+  ): Promise<TriggerRunResult> {
+    const run = await agent.send(prompt);
+    const cursorRunId = run.id;
+    this.logger.log(
+      `Run ${options.runId} -> agent ${agent.agentId}, cursor run ${run.id}`,
+    );
+    await options.onAgentStarted({
+      cursorAgentId: agent.agentId,
+      cursorRunId: run.id,
+    });
+
+    const waiting = run.wait();
+    const streamed = this.streamEvents(run, options);
+    const result = await waiting;
+    const eventCount = await streamed;
+
+    if (eventCount === 0) {
+      await this.backfillTimeline(run, options);
+    }
+
+    const artifactCount = await this.collectArtifacts(agent, options);
+
+    return {
+      cursorAgentId: agent.agentId,
+      cursorRunId,
+      status: result.status,
+      result: result.result ?? null,
+      errorMessage:
+        result.status === 'finished'
+          ? null
+          : this.describeRunFailure(
+              result.status,
+              artifactCount,
+              result.error?.message,
+            ),
+      artifactCount,
+    };
+  }
+
   /**
    * Forward live events, tolerating a stream that dies before the run does.
    *
@@ -198,7 +262,7 @@ export class CursorAgentService {
    */
   private async streamEvents(
     run: Run,
-    options: TriggerRunOptions,
+    options: TriggerRunOptions | ContinueRunOptions,
   ): Promise<number> {
     if (!run.supports('stream')) {
       this.logger.warn(
@@ -229,7 +293,7 @@ export class CursorAgentService {
    */
   private async backfillTimeline(
     run: Run,
-    options: TriggerRunOptions,
+    options: TriggerRunOptions | ContinueRunOptions,
   ): Promise<void> {
     if (!run.supports('conversation')) return;
 
@@ -298,6 +362,38 @@ export class CursorAgentService {
     };
   }
 
+  /** Resume keeps the same VM; MCP servers are in-memory and must be passed again. */
+  private resumeOptions(options: ContinueRunOptions): AgentOptions {
+    const base: AgentOptions = {
+      apiKey: this.config.cursorApiKey,
+      model: { id: this.config.cursorModel },
+    };
+
+    if (options.runtime === 'local') {
+      const cwd = this.config.localAgentPath;
+      if (!cwd) {
+        throw new CursorAgentError(
+          'RISKON_AGENT_PATH is not set, so there is no local checkout to resume in.',
+        );
+      }
+      return { ...base, local: { cwd, settingSources: [] } };
+    }
+
+    return {
+      ...base,
+      ...(this.config.isPubliclyReachable
+        ? {
+            mcpServers: {
+              riskon: {
+                type: 'http' as const,
+                url: `${this.config.publicBaseUrl}/mcp/${options.mcpToken}`,
+              },
+            },
+          }
+        : {}),
+    };
+  }
+
   /**
    * Pull everything the agent published. Failures here are logged rather than
    * thrown: a run that produced a good answer but lost one file is still worth
@@ -305,7 +401,7 @@ export class CursorAgentService {
    */
   private async collectArtifacts(
     agent: SDKAgent,
-    options: TriggerRunOptions,
+    options: TriggerRunOptions | ContinueRunOptions,
   ): Promise<number> {
     if (options.runtime !== 'cloud') {
       return 0;

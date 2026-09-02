@@ -47,11 +47,17 @@ export interface DatasetSummary {
 // Runs
 // ---------------------------------------------------------------------------
 
+export interface ContinueRunRequest {
+  message: string;
+}
+
 export interface CreateRunRequest {
   title: string;
   businessQuestion: string;
   /** Preferred over `dataSource`: an uploaded dataset the agent can fetch. */
   datasetId?: string;
+  /** Every uploaded file for this run. `datasetId` is treated as the first. */
+  datasetIds?: string[];
   /** A URL the agent can load directly, when there is nothing to upload. */
   dataSource?: string;
   template?: string;
@@ -68,6 +74,7 @@ export interface AgentRunSummary {
   businessQuestion: string;
   dataSource: string | null;
   datasetId: string | null;
+  datasetIds: string[];
   template: string | null;
   runtime: AgentRuntime;
   repositoryUrl: string | null;

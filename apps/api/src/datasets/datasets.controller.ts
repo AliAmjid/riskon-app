@@ -44,6 +44,13 @@ export class DatasetsController {
     return this.datasets.findAll();
   }
 
+  @Get(':id')
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<DatasetSummary> {
+    return this.datasets.toSummary(await this.datasets.findOne(id));
+  }
+
   /**
    * Unauthenticated on purpose: this is the URL the cloud agent fetches, and it
    * has no credentials of ours. The UUID is the capability.

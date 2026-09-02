@@ -1,0 +1,93 @@
+name: riskon
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-riskon}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-riskon}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-riskon} -d ${POSTGRES_DB:-riskon}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://${POSTGRES_USER:-riskon}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-riskon}
+      CURSOR_API_KEY: ${CURSOR_API_KEY}
+      CURSOR_MODEL: ${CURSOR_MODEL:-composer-2.5}
+      AGENT_REPOSITORY_URL: ${AGENT_REPOSITORY_URL:-https://github.com/AliAmjid/cursor-agent}
+      AGENT_REPOSITORY_REF: ${AGENT_REPOSITORY_REF:-main}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      STORAGE_ROOT: /app/storage
+      TYPEORM_SYNCHRONIZE: ${TYPEORM_SYNCHRONIZE:-true}
+    volumes:
+      - storage:/app/storage
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.prod
+    restart: unless-stopped
+    expose:
+      - "80"
+
+  nginx:
+    image: jonasal/nginx-certbot:6-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CERTBOT_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/user_conf.d:ro
+      - letsencrypt:/etc/letsencrypt
+      - nginx_secrets:/etc/letsencrypt/.secrets
+    depends_on:
+      - web
+      - api
+
+networks:
+  default:
+    name: riskon_edge
+    external: true
+
+volumes:
+  pgdata:
+  storage:
+  letsencrypt:
+    external: true
+    name: propertydog_letsencrypt
+  nginx_secrets:
+    external: true
+    name: propertydog_nginx_secrets

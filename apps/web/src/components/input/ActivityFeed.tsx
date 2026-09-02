@@ -1,11 +1,20 @@
-import { useEffect, useRef } from 'react';
-import type { ActivityEntry } from '../../utils/runEvents';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { ActivityEntry, Thought } from '../../utils/runEvents';
+import { renderMarkdown } from '../../utils/markdown';
 
 interface Props {
   entries: ActivityEntry[];
   /** True while the agent is working, so the feed shows it is not stalled. */
   working: boolean;
-  emptyMessage: string;
+  emptyMessage?: string;
+  emptySlot?: ReactNode;
+}
+
+interface Turn {
+  id: string;
+  user: ActivityEntry | null;
+  thoughts: Thought[];
+  messages: ActivityEntry[];
 }
 
 function formatTime(isoDate: string): string {
@@ -15,8 +24,103 @@ function formatTime(isoDate: string): string {
   }).format(new Date(isoDate));
 }
 
-export function ActivityFeed({ entries, working, emptyMessage }: Props) {
+function groupTurns(entries: ActivityEntry[]): Turn[] {
+  const turns: Turn[] = [];
+  let current: Turn = { id: 'turn-0', user: null, thoughts: [], messages: [] };
+
+  const flush = () => {
+    if (current.user || current.thoughts.length > 0 || current.messages.length > 0) {
+      turns.push(current);
+    }
+    current = {
+      id: `turn-${turns.length}`,
+      user: null,
+      thoughts: [],
+      messages: [],
+    };
+  };
+
+  for (const entry of entries) {
+    if (entry.kind === 'user') {
+      flush();
+      current.id = entry.id;
+      current.user = entry;
+      continue;
+    }
+    if (entry.kind === 'thoughts') {
+      current.thoughts.push(...entry.thoughts);
+      continue;
+    }
+    current.thoughts.push(...entry.thoughts);
+    current.messages.push(entry);
+  }
+  flush();
+  return turns;
+}
+
+function Thoughts({
+  thoughts,
+  defaultOpen,
+  live,
+}: {
+  thoughts: Thought[];
+  defaultOpen: boolean;
+  live: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  useEffect(() => {
+    if (defaultOpen) setOpen(true);
+    else if (!live) setOpen(false);
+  }, [defaultOpen, live]);
+
+  if (thoughts.length === 0 && !live) return null;
+
+  return (
+    <details
+      className="thoughts"
+      open={open}
+      onToggle={(event) => {
+        setOpen((event.currentTarget as HTMLDetailsElement).open);
+      }}
+    >
+      <summary>
+        {live && !open ? (
+          <span className="processing">
+            <span className="spinner" />
+            <span>Working…</span>
+          </span>
+        ) : open ? (
+          'Hide working notes'
+        ) : (
+          'Working it out'
+        )}
+      </summary>
+      <ul>
+        {thoughts.map((thought) => (
+          <li key={thought.id}>{thought.text}</li>
+        ))}
+        {live && (
+          <li className="thoughts-live">
+            <span className="processing">
+              <span className="spinner" />
+              <span>Working…</span>
+            </span>
+          </li>
+        )}
+      </ul>
+    </details>
+  );
+}
+
+export function ActivityFeed({
+  entries,
+  working,
+  emptyMessage,
+  emptySlot,
+}: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const turns = groupTurns(entries);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -25,45 +129,81 @@ export function ActivityFeed({ entries, working, emptyMessage }: Props) {
     }
   }, [entries, working]);
 
+  const lastTurnIndex = turns.length - 1;
+
   return (
     <div className="messages" ref={scrollRef} aria-live="polite">
-      {entries.length === 0 && !working && (
-        <p className="feed-empty">{emptyMessage}</p>
-      )}
+      {entries.length === 0 &&
+        !working &&
+        (emptySlot ??
+          (emptyMessage ? <p className="feed-empty">{emptyMessage}</p> : null))}
 
-      {entries.map((entry) =>
-        entry.kind === 'do' ? (
-          <div key={entry.id} className="activity-step">
-            <span className="activity-tick" aria-hidden="true" />
-            <span>{entry.text}</span>
+      {turns.map((turn, index) => {
+        const isLast = index === lastTurnIndex;
+        const thoughtsOpen = working && isLast && turn.messages.length === 0;
+
+        return (
+          <div key={turn.id} className="turn">
+            {turn.user && (
+              <div className="message-row user">
+                <div>
+                  <div className="bubble bubble-user">{turn.user.text}</div>
+                  <div className="message-time">
+                    {formatTime(turn.user.createdAt)}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Thoughts
+              thoughts={turn.thoughts}
+              defaultOpen={thoughtsOpen}
+              live={working && isLast && turn.messages.length === 0}
+            />
+
+            {turn.messages.map((entry) => (
+              <div
+                key={entry.id}
+                className={`message-row agent ${entry.kind === 'note' ? 'note' : ''}`}
+              >
+                <div className="agent-mark">AI</div>
+                <div>
+                  {entry.kind === 'say' ? (
+                    <div
+                      className="bubble bubble-md markdown-body"
+                      dangerouslySetInnerHTML={{
+                        __html: renderMarkdown(entry.text),
+                      }}
+                    />
+                  ) : (
+                    <div className="bubble">{entry.text}</div>
+                  )}
+                  <div className="message-time">
+                    {formatTime(entry.createdAt)}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        ) : (
-          <div
-            key={entry.id}
-            className={`message-row agent ${entry.kind === 'note' ? 'note' : ''}`}
-          >
+        );
+      })}
+
+      {working &&
+        turns[lastTurnIndex]?.messages.length === 0 &&
+        (turns[lastTurnIndex]?.thoughts.length ?? 0) === 0 &&
+        !turns[lastTurnIndex]?.user && (
+          <div className="message-row agent">
             <div className="agent-mark">AI</div>
             <div>
-              <div className="bubble">{entry.text}</div>
-              <div className="message-time">{formatTime(entry.createdAt)}</div>
+              <div className="bubble bubble-status">
+                <span className="processing">
+                  <span className="spinner" />
+                  <span>Working…</span>
+                </span>
+              </div>
             </div>
           </div>
-        ),
-      )}
-
-      {working && (
-        <div className="message-row agent">
-          <div className="agent-mark">AI</div>
-          <div>
-            <div className="bubble">
-              <span className="processing">
-                <span className="spinner" />
-                <span>Working…</span>
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
     </div>
   );
 }

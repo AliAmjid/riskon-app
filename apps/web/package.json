@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.33.1-dev57.0",
     "@riskon/shared": "*",
     "dompurify": "^3.4.14",
     "marked": "^18.0.11",

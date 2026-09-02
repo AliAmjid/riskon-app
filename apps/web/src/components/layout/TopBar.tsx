@@ -4,6 +4,7 @@ import { StatusPill } from './StatusPill';
 interface Props {
   activeView: WorkspaceView;
   onViewChange: (view: WorkspaceView) => void;
+  resultsReady: boolean;
   agentStatus?: 'ready' | 'busy' | 'offline';
   agentStatusLabel?: string;
 }
@@ -11,6 +12,7 @@ interface Props {
 export function TopBar({
   activeView,
   onViewChange,
+  resultsReady,
   agentStatus = 'ready',
   agentStatusLabel,
 }: Props) {
@@ -22,16 +24,22 @@ export function TopBar({
 
       <nav className="topnav" aria-label="Workspace views">
         <button
-          className={`nav-tab ${activeView === 'input' ? 'active' : ''}`}
+          className={`nav-tab ${activeView === 'chat' ? 'active' : ''}`}
           type="button"
-          onClick={() => onViewChange('input')}
+          onClick={() => onViewChange('chat')}
         >
-          Input
+          Chat
         </button>
         <button
           className={`nav-tab ${activeView === 'results' ? 'active' : ''}`}
           type="button"
           onClick={() => onViewChange('results')}
+          disabled={!resultsReady}
+          title={
+            resultsReady
+              ? undefined
+              : 'Results appear when the run has finished'
+          }
         >
           Results
         </button>

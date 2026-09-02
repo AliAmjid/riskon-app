@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsIn,
   IsOptional,
   IsString,
@@ -22,6 +23,11 @@ export class CreateRunDto implements CreateRunRequest {
   @IsOptional()
   @IsUUID()
   datasetId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID(undefined, { each: true })
+  datasetIds?: string[];
 
   @IsOptional()
   @IsString()
