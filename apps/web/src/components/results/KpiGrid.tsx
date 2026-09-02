@@ -11,6 +11,7 @@ export function KpiGrid({ metrics }: Props) {
         <article key={metric.label} className="kpi">
           <div className="kpi-label">{metric.label}</div>
           <div className="kpi-value">{metric.value}</div>
+          {metric.note ? <div className="kpi-note">{metric.note}</div> : null}
         </article>
       ))}
     </section>

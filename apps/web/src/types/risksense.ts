@@ -24,4 +24,6 @@ export interface DataAttachment {
 export interface KeyResult {
   label: string;
   value: string;
+  /** One line of context, so the figure does not have to speak for itself. */
+  note?: string;
 }
